@@ -3,6 +3,10 @@ import {render, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 
+function getToggleButton(label: string) {
+  return screen.getAllByRole('button').find((button) => button.textContent?.includes(label)) as HTMLButtonElement;
+}
+
 const mockStatus = {
   config: {
     obs: {host: '127.0.0.1', port: 4455, password: ''},
@@ -11,7 +15,7 @@ const mockStatus = {
       {scene: 'Main', enabled: true, vtuberSource: 'VTuber', vtuberItemId: 10, pngTuberSource: '', pngTuberItemId: 0},
       {scene: 'BRB', enabled: false, vtuberSource: '', vtuberItemId: 0, pngTuberSource: '', pngTuberItemId: 0},
     ],
-    twitch: {clientId: 'client', clientSecret: '', channelId: 'channel', channelName: 'Streamer', accessToken: 'token', refreshToken: '', tokenExpiry: ''},
+    twitch: {clientId: 'client', channelId: 'channel', channelName: 'Streamer', accessToken: 'token', refreshToken: '', tokenExpiry: ''},
     rewardMappings: [],
     modeProfiles: [],
     startupMode: 'restore-last',
@@ -97,7 +101,7 @@ beforeEach(() => {
 describe('App', () => {
   it('switches modes through the backend binding and updates the current mode label', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: /PNG VTuber Mode/i}));
 
@@ -108,15 +112,16 @@ describe('App', () => {
 
   it('shows manageable rewards as selectable and unmanageable rewards as read-only', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
 
-    const manageable = screen.getByText('Manageable Rewards').nextElementSibling as HTMLElement;
+    const manageable = getToggleButton('Manageable Rewards').parentElement as HTMLElement;
     expect(within(manageable).getByText('Dance')).toBeInTheDocument();
     expect(within(manageable).getByRole('checkbox')).toBeEnabled();
 
-    const unmanageable = screen.getByText('Unmanageable Rewards').nextElementSibling as HTMLElement;
+    await userEvent.click(getToggleButton('Unmanageable Rewards'));
+    const unmanageable = getToggleButton('Unmanageable Rewards').parentElement as HTMLElement;
     expect(within(unmanageable).getByText('Hydrate')).toBeInTheDocument();
     expect(within(unmanageable).getByText('Read-only')).toBeInTheDocument();
     expect(within(unmanageable).queryByRole('checkbox')).not.toBeInTheDocument();
@@ -124,7 +129,7 @@ describe('App', () => {
 
   it('shows a warning icon for enabled scene mappings with missing source selections', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
 
@@ -135,7 +140,7 @@ describe('App', () => {
 
   it('filters scene mappings to selected scenes only', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
     expect(screen.getByText('BRB')).toBeInTheDocument();
@@ -147,24 +152,26 @@ describe('App', () => {
 
   it('creates a Twitch reward through the backend binding', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.type(screen.getByLabelText('New Reward Name'), 'Throw Tomato');
-    await userEvent.clear(screen.getByLabelText('Cost'));
-    await userEvent.type(screen.getByLabelText('Cost'), '500');
-    await userEvent.type(screen.getByLabelText('Prompt (optional)'), 'Aim carefully');
-    await userEvent.click(screen.getByRole('button', {name: 'Create Reward'}));
+    await userEvent.click(getToggleButton('Create Reward'));
+    const createRewardSection = getToggleButton('Create Reward').parentElement as HTMLElement;
+    await userEvent.type(within(createRewardSection).getByLabelText(/New Reward Name/i), 'Throw Tomato');
+    await userEvent.clear(within(createRewardSection).getByLabelText(/^Cost$/i));
+    await userEvent.type(within(createRewardSection).getByLabelText(/^Cost$/i), '500');
+    await userEvent.type(within(createRewardSection).getByLabelText(/Prompt \(optional\)/i), 'Aim carefully');
+    await userEvent.click(within(createRewardSection).getByRole('button', {name: /^Create Reward$/}));
 
     await waitFor(() => expect(api.CreateTwitchReward).toHaveBeenCalledWith('Throw Tomato', 500, 'Aim carefully'));
   });
 
   it('saves draft OBS settings before testing the OBS connection', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    const hostInput = screen.getByLabelText('OBS WebSocket Host');
+    const hostInput = screen.getByLabelText(/OBS WebSocket Host/i);
     await userEvent.clear(hostInput);
     await userEvent.type(hostInput, 'obs-machine');
     await userEvent.click(screen.getByRole('button', {name: 'Test OBS'}));
@@ -177,7 +184,7 @@ describe('App', () => {
 
   it('syncs OBS and reloads the source inventory after saving settings', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
     await userEvent.click(screen.getByRole('button', {name: 'Sync Scenes & Sources'}));
@@ -189,10 +196,10 @@ describe('App', () => {
 
   it('saves Twitch settings before starting login', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    const clientIdInput = screen.getByLabelText('Twitch Client ID');
+    const clientIdInput = screen.getByLabelText(/Twitch Client ID/i);
     await userEvent.clear(clientIdInput);
     await userEvent.type(clientIdInput, 'new-client-id');
     await userEvent.click(screen.getByRole('button', {name: 'Login with Twitch'}));
@@ -205,10 +212,10 @@ describe('App', () => {
 
   it('updates 3D-only reward selection through the backend binding', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    const manageable = screen.getByText('Manageable Rewards').nextElementSibling as HTMLElement;
+    const manageable = getToggleButton('Manageable Rewards').parentElement as HTMLElement;
     await userEvent.click(within(manageable).getByRole('checkbox'));
 
     await waitFor(() => expect(api.SetReward3DOnly).toHaveBeenCalledWith('manageable', false));
@@ -218,7 +225,7 @@ describe('App', () => {
     api.SaveConfig.mockResolvedValueOnce(actionError('OBS password is required'));
 
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
     await userEvent.click(screen.getAllByRole('button', {name: 'Save'})[0]);
@@ -229,7 +236,7 @@ describe('App', () => {
 
   it('persists startup mode changes when saving Twitch settings', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
     await userEvent.selectOptions(screen.getByLabelText('Startup Mode'), 'always-3d');
@@ -242,7 +249,7 @@ describe('App', () => {
 
   it('refreshes Twitch rewards from the backend action', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
     await userEvent.click(screen.getByRole('button', {name: 'Refresh Rewards'}));
@@ -253,7 +260,7 @@ describe('App', () => {
 
   it('persists the refresh-on-startup setting when saving Twitch settings', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
     await userEvent.click(screen.getByLabelText('Refresh Twitch rewards on startup'));
@@ -266,7 +273,7 @@ describe('App', () => {
 
   it('saves selected scene sources with their OBS scene item ids', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
     await userEvent.click(screen.getByRole('button', {name: 'Sync Scenes & Sources'}));
@@ -283,7 +290,7 @@ describe('App', () => {
 
   it('enables a scene when a VTuber source is selected', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
     await userEvent.click(screen.getByRole('button', {name: 'Sync Scenes & Sources'}));
@@ -301,7 +308,7 @@ describe('App', () => {
 
   it('runs OBS-only test mode actions after saving settings', async () => {
     render(<App/>);
-    await screen.findByText('VTuber Mode Switcher');
+    await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
     await userEvent.click(screen.getByRole('button', {name: 'Test 3D'}));
@@ -310,5 +317,18 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', {name: 'Test PNG'}));
     await waitFor(() => expect(api.TestPNGMode).toHaveBeenCalledTimes(1));
     expect(api.SaveConfig).toHaveBeenCalled();
+  });
+
+  it('hides the client secret field and only shows config paths when settings are open', async () => {
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    expect(screen.queryByText(/Config:/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Twitch Client Secret/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    expect(screen.getByText(/Config:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Log:/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Twitch Client Secret/i)).not.toBeInTheDocument();
   });
 });

@@ -210,7 +210,6 @@ export namespace config {
 	}
 	export class TwitchConfig {
 	    clientId: string;
-	    clientSecret: string;
 	    channelId: string;
 	    channelName: string;
 	    accessToken: string;
@@ -224,7 +223,6 @@ export namespace config {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.clientId = source["clientId"];
-	        this.clientSecret = source["clientSecret"];
 	        this.channelId = source["channelId"];
 	        this.channelName = source["channelName"];
 	        this.accessToken = source["accessToken"];

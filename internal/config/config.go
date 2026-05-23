@@ -52,7 +52,6 @@ type SceneMapping struct {
 
 type TwitchConfig struct {
 	ClientID     string `json:"clientId"`
-	ClientSecret string `json:"clientSecret"`
 	ChannelID    string `json:"channelId"`
 	ChannelName  string `json:"channelName"`
 	AccessToken  string `json:"accessToken"`
