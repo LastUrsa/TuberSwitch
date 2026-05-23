@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"log"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,24 +14,31 @@ import (
 	"TuberSwitch/internal/config"
 	"TuberSwitch/internal/logging"
 	"TuberSwitch/internal/obs"
+	"TuberSwitch/internal/secrets"
 	"TuberSwitch/internal/twitch"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
-	ctx        context.Context
-	store      *config.Store
-	configPath string
-	logPath    string
-	logger     *log.Logger
-	closeLog   func()
-	obs        obsService
-	twitch     fullTwitchService
+	ctx         context.Context
+	store       *config.Store
+	secretStore secretStore
+	logger      *log.Logger
+	closeLog    func()
+	obs         obsService
+	twitch      fullTwitchService
 
 	mu         sync.Mutex
 	cfg        config.Config
 	lastAction string
+}
+
+type secretStore interface {
+	LoadOBSPassword() (string, error)
+	SaveOBSPassword(string) error
+	LoadTwitchTokens() (secrets.TwitchTokens, error)
+	SaveTwitchTokens(secrets.TwitchTokens) error
 }
 
 type obsService interface {
@@ -71,17 +80,17 @@ func NewApp() *App {
 		logger.Printf("config load failed: %v", err)
 		cfg = config.Default()
 	}
-	return &App{
-		store:      store,
-		configPath: cfgPath,
-		logPath:    logPath,
-		logger:     logger,
-		closeLog:   closeLog,
-		obs:        obs.New(logger),
-		twitch:     twitch.New(logger),
-		cfg:        cfg,
-		lastAction: "Ready",
+	app := &App{
+		store:       store,
+		secretStore: secrets.NewStore(),
+		logger:      logger,
+		closeLog:    closeLog,
+		obs:         obs.New(logger),
+		twitch:      twitch.New(logger),
+		cfg:         cfg,
+		lastAction:  "Ready",
 	}
+	return app.initSecrets()
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -119,14 +128,26 @@ func (a *App) GetStatus() appdto.Status {
 	return a.statusLocked()
 }
 
-func (a *App) SaveConfig(cfg config.Config) appdto.ActionResult {
+func (a *App) SaveConfig(input appdto.SettingsInput) appdto.ActionResult {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	cfg.Normalize()
-	a.cfg = cfg
-	if err := a.store.Save(a.cfg); err != nil {
+	next := a.updatedConfigLocked(input.Config)
+	oldPassword := a.cfg.OBS.Password
+	if input.UpdateOBSPassword {
+		if err := a.secretStore.SaveOBSPassword(input.OBSPassword); err != nil {
+			return a.resultLocked(false, "OBS password save failed", nil, []string{err.Error()})
+		}
+		next.OBS.Password = input.OBSPassword
+	} else {
+		next.OBS.Password = oldPassword
+	}
+	if err := a.store.Save(next); err != nil {
+		if input.UpdateOBSPassword {
+			_ = a.secretStore.SaveOBSPassword(oldPassword)
+		}
 		return a.resultLocked(false, "Config save failed", nil, []string{err.Error()})
 	}
+	a.cfg = next
 	a.lastAction = "Settings saved"
 	return a.resultLocked(true, "Settings saved", nil, nil)
 }
@@ -231,11 +252,18 @@ func (a *App) StartTwitchLogin() appdto.ActionResult {
 	a.lastAction = "Twitch login opened. Enter code " + device.UserCode + " if prompted."
 	a.mu.Unlock()
 	a.logger.Printf("Twitch device login URL: %s user_code=%s", device.VerificationURI, device.UserCode)
-	runtime.BrowserOpenURL(a.ctx, device.VerificationURI)
+	openURL, err := trustedBrowserURL(device.VerificationURI)
+	if err != nil {
+		return a.withError(err.Error())
+	}
+	runtime.BrowserOpenURL(a.ctx, openURL)
 
 	updated, err := a.twitch.WaitForDeviceToken(context.Background(), cfg.Twitch, device)
 	if err != nil {
 		return a.withError(err.Error())
+	}
+	if err := a.secretStore.SaveTwitchTokens(twitchTokensFromConfig(updated)); err != nil {
+		return a.withError("Twitch secure token save failed: " + err.Error())
 	}
 	a.mu.Lock()
 	a.cfg.Twitch = updated
@@ -290,6 +318,9 @@ func (a *App) CreateTwitchReward(title string, cost int, prompt string) appdto.A
 		return a.withError(err.Error())
 	}
 	cfg.Twitch = updated
+	if err := a.secretStore.SaveTwitchTokens(twitchTokensFromConfig(updated)); err != nil {
+		return a.withError("Twitch secure token save failed: " + err.Error())
+	}
 	reward, err := a.twitch.CreateReward(context.Background(), cfg.Twitch, title, cost, prompt)
 	if err != nil {
 		return a.withError(err.Error())
@@ -348,6 +379,9 @@ func (a *App) refreshTwitchTokenLocked() {
 		return
 	}
 	a.cfg.Twitch = updated
+	if err := a.secretStore.SaveTwitchTokens(twitchTokensFromConfig(updated)); err != nil {
+		a.logger.Printf("Twitch secure token save failed: %v", err)
+	}
 	_ = a.store.Save(a.cfg)
 }
 
@@ -360,7 +394,7 @@ func (a *App) applyOBSMode(mode config.Mode) error {
 		return fmt.Errorf("mode profile %q was not found", mode)
 	}
 	a.resolveSceneItemIDsBestEffortLocked()
-	errors := []string{}
+	errMessages := []string{}
 	applied := 0
 	for _, mapping := range a.cfg.SceneMappings {
 		if !mapping.Enabled || mapping.Scene == "" {
@@ -369,13 +403,13 @@ func (a *App) applyOBSMode(mode config.Mode) error {
 		if mapping.VTuberSource != "" {
 			applied++
 			if err := a.obs.SetSourceVisibility(mapping.Scene, mapping.VTuberSource, mapping.VTuberItemID, profile.VTuberVisible); err != nil {
-				errors = append(errors, fmt.Sprintf("%s / %s: %v", mapping.Scene, mapping.VTuberSource, err))
+				errMessages = append(errMessages, fmt.Sprintf("%s / %s: %v", mapping.Scene, mapping.VTuberSource, err))
 			}
 		}
 		if mapping.PNGTuberSource != "" {
 			applied++
 			if err := a.obs.SetSourceVisibility(mapping.Scene, mapping.PNGTuberSource, mapping.PNGTuberItemID, profile.PNGTuberVisible); err != nil {
-				errors = append(errors, fmt.Sprintf("%s / %s: %v", mapping.Scene, mapping.PNGTuberSource, err))
+				errMessages = append(errMessages, fmt.Sprintf("%s / %s: %v", mapping.Scene, mapping.PNGTuberSource, err))
 			}
 		}
 		if mapping.VTuberSource == "" || mapping.PNGTuberSource == "" {
@@ -383,11 +417,11 @@ func (a *App) applyOBSMode(mode config.Mode) error {
 		}
 		a.logger.Printf("OBS scene %q switched to %s", mapping.Scene, mode)
 	}
-	if applied == 0 && len(errors) == 0 {
+	if applied == 0 && len(errMessages) == 0 {
 		return fmt.Errorf("no OBS scene mappings are configured")
 	}
-	if len(errors) > 0 {
-		return fmt.Errorf(strings.Join(errors, "; "))
+	if len(errMessages) > 0 {
+		return stderrors.New(strings.Join(errMessages, "; "))
 	}
 	return nil
 }
@@ -406,6 +440,9 @@ func (a *App) applyTwitchModeLocked(mode config.Mode) []string {
 		return []string{err.Error()}
 	}
 	a.cfg.Twitch = updated
+	if err := a.secretStore.SaveTwitchTokens(twitchTokensFromConfig(updated)); err != nil {
+		return []string{"Twitch secure token save failed: " + err.Error()}
+	}
 	for _, mapping := range a.cfg.RewardMappings {
 		if !mapping.Is3DOnly || !mapping.Manageable {
 			continue
@@ -474,6 +511,9 @@ func (a *App) refreshRewards(ctx context.Context) ([]twitch.Reward, error) {
 		return nil, err
 	}
 	cfg.Twitch = updated
+	if err := a.secretStore.SaveTwitchTokens(twitchTokensFromConfig(updated)); err != nil {
+		return nil, err
+	}
 	rewards, err := a.twitch.FetchRewards(ctx, cfg.Twitch)
 	if err != nil {
 		return nil, err
@@ -532,14 +572,12 @@ func (a *App) statusLocked() appdto.Status {
 		label = profile.DisplayName
 	}
 	return appdto.Status{
-		Config:           a.cfg,
+		Config:           a.settingsLocked(),
 		CurrentMode:      a.cfg.CurrentMode,
 		CurrentModeLabel: label,
 		OBSConnected:     a.obs.Connected(),
 		TwitchConnected:  a.cfg.Twitch.AccessToken != "",
 		LastAction:       a.lastAction,
-		ConfigPath:       a.configPath,
-		LogPath:          a.logPath,
 	}
 }
 
@@ -624,4 +662,115 @@ func isUnmanageableRewardError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "client ID used to create the custom reward") ||
 		strings.Contains(msg, "broadcaster doesn't have partner or affiliate status")
+}
+
+func (a *App) initSecrets() *App {
+	if err := a.migrateLegacySecrets(); err != nil {
+		a.logger.Printf("secret migration failed: %v", err)
+	}
+	if err := a.loadSecrets(); err != nil {
+		a.logger.Printf("secret load failed: %v", err)
+	}
+	return a
+}
+
+func (a *App) migrateLegacySecrets() error {
+	changed := false
+	if a.cfg.OBS.Password != "" {
+		if err := a.secretStore.SaveOBSPassword(a.cfg.OBS.Password); err != nil {
+			return err
+		}
+		a.cfg.OBS.Password = ""
+		changed = true
+	}
+	if a.cfg.Twitch.AccessToken != "" || a.cfg.Twitch.RefreshToken != "" || a.cfg.Twitch.TokenExpiry != "" {
+		if err := a.secretStore.SaveTwitchTokens(twitchTokensFromConfig(a.cfg.Twitch)); err != nil {
+			return err
+		}
+		a.cfg.Twitch.AccessToken = ""
+		a.cfg.Twitch.RefreshToken = ""
+		a.cfg.Twitch.TokenExpiry = ""
+		changed = true
+	}
+	if changed {
+		return a.store.Save(a.cfg)
+	}
+	return nil
+}
+
+func (a *App) loadSecrets() error {
+	password, err := a.secretStore.LoadOBSPassword()
+	if err != nil {
+		return err
+	}
+	a.cfg.OBS.Password = password
+	tokens, err := a.secretStore.LoadTwitchTokens()
+	if err != nil {
+		return err
+	}
+	a.cfg.Twitch.AccessToken = tokens.AccessToken
+	a.cfg.Twitch.RefreshToken = tokens.RefreshToken
+	a.cfg.Twitch.TokenExpiry = tokens.TokenExpiry
+	return nil
+}
+
+func (a *App) settingsLocked() appdto.Settings {
+	return appdto.Settings{
+		OBS: appdto.OBSSettings{
+			Host:               a.cfg.OBS.Host,
+			Port:               a.cfg.OBS.Port,
+			AllowRemote:        a.cfg.OBS.AllowRemote,
+			PasswordConfigured: a.cfg.OBS.Password != "",
+		},
+		Sources:                 a.cfg.Sources,
+		SceneMappings:           append([]config.SceneMapping(nil), a.cfg.SceneMappings...),
+		Twitch:                  appdto.TwitchSettings{ClientID: a.cfg.Twitch.ClientID, ChannelID: a.cfg.Twitch.ChannelID, ChannelName: a.cfg.Twitch.ChannelName},
+		ModeProfiles:            append([]config.ModeProfile(nil), a.cfg.ModeProfiles...),
+		StartupMode:             a.cfg.StartupMode,
+		CurrentMode:             a.cfg.CurrentMode,
+		RefreshRewardsOnStartup: a.cfg.RefreshRewardsOnStartup,
+	}
+}
+
+func (a *App) updatedConfigLocked(settings appdto.Settings) config.Config {
+	next := a.cfg
+	next.OBS.Host = settings.OBS.Host
+	next.OBS.Port = settings.OBS.Port
+	next.OBS.AllowRemote = settings.OBS.AllowRemote
+	next.Sources = settings.Sources
+	next.SceneMappings = append([]config.SceneMapping(nil), settings.SceneMappings...)
+	next.Twitch.ClientID = settings.Twitch.ClientID
+	next.Twitch.ChannelID = settings.Twitch.ChannelID
+	next.Twitch.ChannelName = settings.Twitch.ChannelName
+	next.ModeProfiles = append([]config.ModeProfile(nil), settings.ModeProfiles...)
+	next.StartupMode = settings.StartupMode
+	next.CurrentMode = settings.CurrentMode
+	next.RefreshRewardsOnStartup = settings.RefreshRewardsOnStartup
+	next.Normalize()
+	return next
+}
+
+func twitchTokensFromConfig(cfg config.TwitchConfig) secrets.TwitchTokens {
+	return secrets.TwitchTokens{
+		AccessToken:  cfg.AccessToken,
+		RefreshToken: cfg.RefreshToken,
+		TokenExpiry:  cfg.TokenExpiry,
+	}
+}
+
+func trustedBrowserURL(raw string) (string, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("invalid browser URL from Twitch")
+	}
+	if parsed.Scheme != "https" {
+		return "", fmt.Errorf("refusing to open non-HTTPS Twitch login URL")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	switch host {
+	case "twitch.tv", "www.twitch.tv", "id.twitch.tv":
+		return parsed.String(), nil
+	default:
+		return "", fmt.Errorf("refusing to open unexpected Twitch login host %q", host)
+	}
 }

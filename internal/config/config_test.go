@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -109,5 +110,28 @@ func TestStoreLoadInvalidJSON(t *testing.T) {
 	}
 	if _, ok := err.(*json.SyntaxError); !ok {
 		t.Fatalf("expected syntax error, got %T %v", err, err)
+	}
+}
+
+func TestStoreSaveDoesNotPersistSecrets(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	store := NewStore(path)
+	cfg := Default()
+	cfg.OBS.Password = "obs-secret"
+	cfg.Twitch.AccessToken = "access-token"
+	cfg.Twitch.RefreshToken = "refresh-token"
+	cfg.Twitch.TokenExpiry = "2026-01-01T00:00:00Z"
+
+	if err := store.Save(cfg); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	text := string(data)
+	if strings.Contains(text, "obs-secret") || strings.Contains(text, "access-token") || strings.Contains(text, "refresh-token") {
+		t.Fatalf("secrets were persisted: %s", text)
 	}
 }

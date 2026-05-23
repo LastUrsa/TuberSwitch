@@ -1,14 +1,12 @@
 export namespace app {
 	
 	export class Status {
-	    config: config.Config;
+	    config: Settings;
 	    currentMode: string;
 	    currentModeLabel: string;
 	    obsConnected: boolean;
 	    twitchConnected: boolean;
 	    lastAction: string;
-	    configPath: string;
-	    logPath: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Status(source);
@@ -16,14 +14,12 @@ export namespace app {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.config = this.convertValues(source["config"], config.Config);
+	        this.config = this.convertValues(source["config"], Settings);
 	        this.currentMode = source["currentMode"];
 	        this.currentModeLabel = source["currentModeLabel"];
 	        this.obsConnected = source["obsConnected"];
 	        this.twitchConnected = source["twitchConnected"];
 	        this.lastAction = source["lastAction"];
-	        this.configPath = source["configPath"];
-	        this.logPath = source["logPath"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -164,6 +160,119 @@ export namespace app {
 	        this.is3DOnly = source["is3DOnly"];
 	        this.manageable = source["manageable"];
 	    }
+	}
+
+	export class OBSSettings {
+	    host: string;
+	    port: number;
+	    allowRemote: boolean;
+	    passwordConfigured: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new OBSSettings(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.host = source["host"];
+	        this.port = source["port"];
+	        this.allowRemote = source["allowRemote"];
+	        this.passwordConfigured = source["passwordConfigured"];
+	    }
+	}
+	export class TwitchSettings {
+	    clientId: string;
+	    channelId: string;
+	    channelName: string;
+
+	    static createFrom(source: any = {}) {
+	        return new TwitchSettings(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.clientId = source["clientId"];
+	        this.channelId = source["channelId"];
+	        this.channelName = source["channelName"];
+	    }
+	}
+	export class Settings {
+	    obs: OBSSettings;
+	    sources: config.SourcesConfig;
+	    sceneMappings: config.SceneMapping[];
+	    twitch: TwitchSettings;
+	    modeProfiles: config.ModeProfile[];
+	    startupMode: string;
+	    currentMode: string;
+	    refreshRewardsOnStartup: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new Settings(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.obs = this.convertValues(source["obs"], OBSSettings);
+	        this.sources = this.convertValues(source["sources"], config.SourcesConfig);
+	        this.sceneMappings = this.convertValues(source["sceneMappings"], config.SceneMapping);
+	        this.twitch = this.convertValues(source["twitch"], TwitchSettings);
+	        this.modeProfiles = this.convertValues(source["modeProfiles"], config.ModeProfile);
+	        this.startupMode = source["startupMode"];
+	        this.currentMode = source["currentMode"];
+	        this.refreshRewardsOnStartup = source["refreshRewardsOnStartup"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SettingsInput {
+	    config: Settings;
+	    obsPassword: string;
+	    updateObsPassword: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new SettingsInput(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.config = this.convertValues(source["config"], Settings);
+	        this.obsPassword = source["obsPassword"];
+	        this.updateObsPassword = source["updateObsPassword"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

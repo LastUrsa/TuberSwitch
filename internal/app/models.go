@@ -3,14 +3,12 @@ package app
 import "TuberSwitch/internal/config"
 
 type Status struct {
-	Config           config.Config `json:"config"`
-	CurrentMode      config.Mode   `json:"currentMode"`
-	CurrentModeLabel string        `json:"currentModeLabel"`
-	OBSConnected     bool          `json:"obsConnected"`
-	TwitchConnected  bool          `json:"twitchConnected"`
-	LastAction       string        `json:"lastAction"`
-	ConfigPath       string        `json:"configPath"`
-	LogPath          string        `json:"logPath"`
+	Config           Settings    `json:"config"`
+	CurrentMode      config.Mode `json:"currentMode"`
+	CurrentModeLabel string      `json:"currentModeLabel"`
+	OBSConnected     bool        `json:"obsConnected"`
+	TwitchConnected  bool        `json:"twitchConnected"`
+	LastAction       string      `json:"lastAction"`
 }
 
 type ActionResult struct {
@@ -42,4 +40,34 @@ type TwitchReward struct {
 	Enabled    bool   `json:"enabled"`
 	Is3DOnly   bool   `json:"is3DOnly"`
 	Manageable bool   `json:"manageable"`
+}
+
+type Settings struct {
+	OBS                     OBSSettings           `json:"obs"`
+	Sources                 config.SourcesConfig  `json:"sources"`
+	SceneMappings           []config.SceneMapping `json:"sceneMappings"`
+	Twitch                  TwitchSettings        `json:"twitch"`
+	ModeProfiles            []config.ModeProfile  `json:"modeProfiles"`
+	StartupMode             config.StartupMode    `json:"startupMode"`
+	CurrentMode             config.Mode           `json:"currentMode"`
+	RefreshRewardsOnStartup bool                  `json:"refreshRewardsOnStartup"`
+}
+
+type OBSSettings struct {
+	Host               string `json:"host"`
+	Port               int    `json:"port"`
+	AllowRemote        bool   `json:"allowRemote"`
+	PasswordConfigured bool   `json:"passwordConfigured"`
+}
+
+type TwitchSettings struct {
+	ClientID    string `json:"clientId"`
+	ChannelID   string `json:"channelId"`
+	ChannelName string `json:"channelName"`
+}
+
+type SettingsInput struct {
+	Config            Settings `json:"config"`
+	OBSPassword       string   `json:"obsPassword"`
+	UpdateOBSPassword bool     `json:"updateObsPassword"`
 }

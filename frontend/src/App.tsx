@@ -19,7 +19,7 @@ import {
 type Mode = '3D' | 'PNG';
 
 type Config = {
-  obs: { host: string; port: number; password: string };
+  obs: { host: string; port: number; allowRemote: boolean; passwordConfigured: boolean };
   sources: {
     scene: string;
     vtuberSource: string;
@@ -32,11 +32,7 @@ type Config = {
     clientId: string;
     channelId: string;
     channelName: string;
-    accessToken: string;
-    refreshToken: string;
-    tokenExpiry: string;
   };
-  rewardMappings: RewardMapping[];
   modeProfiles: unknown[];
   startupMode: 'restore-last' | 'always-3d' | 'always-png';
   currentMode: Mode;
@@ -66,8 +62,12 @@ type Status = {
   obsConnected: boolean;
   twitchConnected: boolean;
   lastAction: string;
-  configPath: string;
-  logPath: string;
+};
+
+type SettingsInput = {
+  config: Config;
+  obsPassword: string;
+  updateObsPassword: boolean;
 };
 
 type ActionResult = {
@@ -110,6 +110,8 @@ function App() {
   const [createRewardOpen, setCreateRewardOpen] = useState(false);
   const [manageableRewardsOpen, setManageableRewardsOpen] = useState(true);
   const [unmanageableRewardsOpen, setUnmanageableRewardsOpen] = useState(false);
+  const [obsPassword, setObsPassword] = useState('');
+  const [obsPasswordDirty, setObsPasswordDirty] = useState(false);
 
   useEffect(() => {
     load();
@@ -117,9 +119,11 @@ function App() {
 
   async function load() {
     const next = await GetStatus();
-    setStatus(next as Status);
-    setDraft(structuredClone((next as Status).config));
+    setStatus(next as unknown as Status);
+    setDraft(structuredClone((next as unknown as Status).config));
     setRewards((await GetTwitchRewards()) as TwitchReward[]);
+    setObsPassword('');
+    setObsPasswordDirty(false);
   }
 
   async function run(label: string, action: () => Promise<ActionResult>) {
@@ -127,10 +131,12 @@ function App() {
     setErrors([]);
     try {
       const result = await action();
-      setStatus(result.newStatus as Status);
-      setDraft(structuredClone((result.newStatus as Status).config));
+      setStatus(result.newStatus as unknown as Status);
+      setDraft(structuredClone((result.newStatus as unknown as Status).config));
       setErrors(result.errors || []);
       setRewards((await GetTwitchRewards()) as TwitchReward[]);
+      setObsPassword('');
+      setObsPasswordDirty(false);
       return result;
     } catch (error) {
       setErrors([String(error)]);
@@ -154,7 +160,7 @@ function App() {
 
   async function saveSettings() {
     if (!draft) return;
-    await run('Saving settings', () => SaveConfig(draft as never) as Promise<ActionResult>);
+    await run('Saving settings', () => SaveConfig(buildSettingsInput(draft, obsPassword, obsPasswordDirty) as never) as unknown as Promise<ActionResult>);
   }
 
   async function saveThen(label: string, action: () => Promise<ActionResult>) {
@@ -162,9 +168,11 @@ function App() {
     setBusy('Saving settings');
     setErrors([]);
     try {
-      const saved = await SaveConfig(draft as never) as ActionResult;
-      setStatus(saved.newStatus as Status);
-      setDraft(structuredClone((saved.newStatus as Status).config));
+      const saved = await SaveConfig(buildSettingsInput(draft, obsPassword, obsPasswordDirty) as never) as unknown as ActionResult;
+      setStatus(saved.newStatus as unknown as Status);
+      setDraft(structuredClone((saved.newStatus as unknown as Status).config));
+      setObsPassword('');
+      setObsPasswordDirty(false);
       if (!saved.ok) {
         setErrors(saved.errors || [saved.message]);
         return saved;
@@ -178,11 +186,11 @@ function App() {
   }
 
   async function updateReward(rewardID: string, checked: boolean) {
-    await run('Saving reward', () => SetReward3DOnly(rewardID, checked) as Promise<ActionResult>);
+    await run('Saving reward', () => SetReward3DOnly(rewardID, checked) as unknown as Promise<ActionResult>);
   }
 
   async function createReward() {
-    const result = await saveThen('Creating reward', () => CreateTwitchReward(newRewardTitle, newRewardCost, newRewardPrompt) as Promise<ActionResult>);
+    const result = await saveThen('Creating reward', () => CreateTwitchReward(newRewardTitle, newRewardCost, newRewardPrompt) as unknown as Promise<ActionResult>);
     if (result?.ok) {
       setNewRewardTitle('');
       setNewRewardPrompt('');
@@ -226,7 +234,7 @@ function App() {
         <button
           className={`mode-switch ${is3D ? 'on' : 'off'}`}
           disabled={!canInteract}
-          onClick={() => run(is3D ? 'Switching to PNG' : 'Switching to 3D', () => ApplyMode(is3D ? 'PNG' : '3D') as Promise<ActionResult>)}
+          onClick={() => run(is3D ? 'Switching to PNG' : 'Switching to 3D', () => ApplyMode(is3D ? 'PNG' : '3D') as unknown as Promise<ActionResult>)}
           aria-pressed={is3D}
         >
           <span>{is3D ? '3D' : 'PNG'}</span>
@@ -300,18 +308,31 @@ function App() {
                   info={(
                     <>
                       <p>Use the password from <strong>Tools &gt; WebSocket Server Settings</strong> in OBS.</p>
+                      <p>Stored securely in the OS credential store and never shown back in the app.</p>
                     </>
                   )}
                   type="password"
-                  value={draft.obs.password}
-                  onChange={(value) => setDraft({...draft, obs: {...draft.obs, password: value}})}
+                  value={obsPassword}
+                  placeholder={draft.obs.passwordConfigured ? 'Saved securely. Enter a new value to replace it.' : 'Enter OBS WebSocket password'}
+                  onChange={(value) => {
+                    setObsPassword(value);
+                    setObsPasswordDirty(true);
+                  }}
                 />
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={draft.obs.allowRemote}
+                    onChange={(event) => setDraft({...draft, obs: {...draft.obs, allowRemote: event.currentTarget.checked}})}
+                  />
+                  <span>Allow remote OBS connections</span>
+                </label>
               </div>
               <div className="button-row">
                 <button onClick={saveSettings} disabled={!!busy}>Save</button>
-                <button onClick={() => saveThen('Testing OBS', () => TestOBSConnection() as Promise<ActionResult>)} disabled={!!busy}>Test OBS</button>
+                <button onClick={() => saveThen('Testing OBS', () => TestOBSConnection() as unknown as Promise<ActionResult>)} disabled={!!busy}>Test OBS</button>
                 <button onClick={async () => {
-                  const result = await saveThen('Syncing OBS', () => SyncOBS() as Promise<ActionResult>);
+                  const result = await saveThen('Syncing OBS', () => SyncOBS() as unknown as Promise<ActionResult>);
                   await loadInventory(result?.newStatus?.config?.sceneMappings?.[0]?.scene || '');
                 }} disabled={!!busy}>Sync Scenes & Sources</button>
               </div>
@@ -370,8 +391,8 @@ function App() {
               </CollapsibleSection>
 
               <div className="button-row">
-                <button onClick={() => saveThen('Testing 3D OBS', () => Test3DMode() as Promise<ActionResult>)} disabled={!!busy}>Test 3D</button>
-                <button onClick={() => saveThen('Testing PNG OBS', () => TestPNGMode() as Promise<ActionResult>)} disabled={!!busy}>Test PNG</button>
+                <button onClick={() => saveThen('Testing 3D OBS', () => Test3DMode() as unknown as Promise<ActionResult>)} disabled={!!busy}>Test 3D</button>
+                <button onClick={() => saveThen('Testing PNG OBS', () => TestPNGMode() as unknown as Promise<ActionResult>)} disabled={!!busy}>Test PNG</button>
               </div>
             </div>
 
@@ -412,8 +433,8 @@ function App() {
               </div>
               <div className="button-row">
                 <button onClick={saveSettings} disabled={!!busy}>Save</button>
-                <button onClick={() => saveThen('Logging in', () => StartTwitchLogin() as Promise<ActionResult>)} disabled={!!busy}>Login with Twitch</button>
-                <button onClick={() => saveThen('Refreshing rewards', () => RefreshTwitchRewards() as Promise<ActionResult>)} disabled={!!busy}>Refresh Rewards</button>
+                <button onClick={() => saveThen('Logging in', () => StartTwitchLogin() as unknown as Promise<ActionResult>)} disabled={!!busy}>Login with Twitch</button>
+                <button onClick={() => saveThen('Refreshing rewards', () => RefreshTwitchRewards() as unknown as Promise<ActionResult>)} disabled={!!busy}>Refresh Rewards</button>
               </div>
 
               <CollapsibleSection title="Create Reward" open={createRewardOpen} onToggle={setCreateRewardOpen}>
@@ -459,10 +480,6 @@ function App() {
             </div>
           </section>
 
-          <footer>
-            <span>Config: {status?.configPath}</span>
-            <span>Log: {status?.logPath}</span>
-          </footer>
         </>
       )}
     </main>
@@ -481,11 +498,11 @@ function StatusPill({label, value, good, info}: {label: string; value: string; g
   );
 }
 
-function TextInput({label, value, onChange, type = 'text', info}: {label: string; value: string; onChange: (value: string) => void; type?: string; info?: ReactNode}) {
+function TextInput({label, value, onChange, type = 'text', info, placeholder}: {label: string; value: string; onChange: (value: string) => void; type?: string; info?: ReactNode; placeholder?: string}) {
   return (
     <label>
       <FieldLabel text={label} info={info}/>
-      <input type={type} value={value || ''} onChange={(event) => onChange(event.currentTarget.value)}/>
+      <input type={type} value={value || ''} placeholder={placeholder} onChange={(event) => onChange(event.currentTarget.value)}/>
     </label>
   );
 }
@@ -554,6 +571,14 @@ function CollapsibleSection({title, open, onToggle, children}: {title: string; o
       {open && <div className="collapsible-body">{children}</div>}
     </section>
   );
+}
+
+function buildSettingsInput(config: Config, obsPassword: string, updateObsPassword: boolean): SettingsInput {
+  return {
+    config,
+    obsPassword,
+    updateObsPassword,
+  };
 }
 
 export default App;

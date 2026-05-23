@@ -13,7 +13,7 @@ func AppDir() (string, error) {
 		return "", err
 	}
 	dir := filepath.Join(base, appDirName)
-	return dir, os.MkdirAll(dir, 0o755)
+	return dir, os.MkdirAll(dir, 0o700)
 }
 
 func ConfigPath() (string, error) {

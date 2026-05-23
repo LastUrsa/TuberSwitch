@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/url"
 	"strconv"
 	"sync"
@@ -104,13 +105,17 @@ func (c *Client) Connect(cfg config.OBSConfig) error {
 }
 
 func (c *Client) dial(cfg config.OBSConfig) (*websocket.Conn, error) {
+	if err := validateHost(cfg); err != nil {
+		return nil, err
+	}
 	hosts := []string{cfg.Host}
 	if cfg.Host == "localhost" {
 		hosts = append(hosts, "127.0.0.1")
 	}
 	var lastErr error
+	scheme := transportScheme(cfg)
 	for _, host := range hosts {
-		u := url.URL{Scheme: "ws", Host: host + ":" + strconv.Itoa(cfg.Port), Path: "/"}
+		u := url.URL{Scheme: scheme, Host: host + ":" + strconv.Itoa(cfg.Port), Path: "/"}
 		c.logger.Printf("OBS connection attempt: %s", u.String())
 		conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 		if err == nil {
@@ -282,4 +287,33 @@ func mapToStruct(input interface{}, out interface{}) error {
 		return err
 	}
 	return json.Unmarshal(data, out)
+}
+
+func validateHost(cfg config.OBSConfig) error {
+	if cfg.Host == "" {
+		return fmt.Errorf("OBS host is required")
+	}
+	if cfg.AllowRemote {
+		return nil
+	}
+	if !isLoopbackHost(cfg.Host) {
+		return fmt.Errorf("remote OBS hosts are disabled; use a loopback host or explicitly allow remote OBS connections")
+	}
+	return nil
+}
+
+func isLoopbackHost(host string) bool {
+	switch host {
+	case "localhost":
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func transportScheme(cfg config.OBSConfig) string {
+	if cfg.AllowRemote && !isLoopbackHost(cfg.Host) {
+		return "wss"
+	}
+	return "ws"
 }

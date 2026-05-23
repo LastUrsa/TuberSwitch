@@ -28,9 +28,10 @@ type Config struct {
 }
 
 type OBSConfig struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Password string `json:"password"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Password    string `json:"password"`
+	AllowRemote bool   `json:"allowRemote"`
 }
 
 type SourcesConfig struct {

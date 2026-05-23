@@ -15,7 +15,7 @@ export function GetTwitchRewards():Promise<Array<app.TwitchReward>>;
 
 export function RefreshTwitchRewards():Promise<app.ActionResult>;
 
-export function SaveConfig(arg1:config.Config):Promise<app.ActionResult>;
+export function SaveConfig(arg1:app.SettingsInput):Promise<app.ActionResult>;
 
 export function SetReward3DOnly(arg1:string,arg2:boolean):Promise<app.ActionResult>;
 

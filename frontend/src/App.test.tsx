@@ -9,14 +9,13 @@ function getToggleButton(label: string) {
 
 const mockStatus = {
   config: {
-    obs: {host: '127.0.0.1', port: 4455, password: ''},
+    obs: {host: '127.0.0.1', port: 4455, allowRemote: false, passwordConfigured: false},
     sources: {scene: '', vtuberSource: '', vtuberItemId: 0, pngTuberSource: '', pngTuberItemId: 0},
     sceneMappings: [
       {scene: 'Main', enabled: true, vtuberSource: 'VTuber', vtuberItemId: 10, pngTuberSource: '', pngTuberItemId: 0},
       {scene: 'BRB', enabled: false, vtuberSource: '', vtuberItemId: 0, pngTuberSource: '', pngTuberItemId: 0},
     ],
-    twitch: {clientId: 'client', channelId: 'channel', channelName: 'Streamer', accessToken: 'token', refreshToken: '', tokenExpiry: ''},
-    rewardMappings: [],
+    twitch: {clientId: 'client', channelId: 'channel', channelName: 'Streamer'},
     modeProfiles: [],
     startupMode: 'restore-last',
     currentMode: 'PNG',
@@ -27,8 +26,6 @@ const mockStatus = {
   obsConnected: true,
   twitchConnected: true,
   lastAction: 'Ready',
-  configPath: 'config.json',
-  logPath: 'tuberswitch.log',
 };
 
 const mockRewards = [
@@ -82,7 +79,7 @@ beforeEach(() => {
       BRB: [{name: 'PNG BRB', sceneItemId: 20}],
     },
   });
-  api.SaveConfig.mockImplementation(async (config) => actionResult({...mockStatus, config}));
+  api.SaveConfig.mockImplementation(async (input) => actionResult({...mockStatus, config: input.config}));
   api.SetReward3DOnly.mockResolvedValue(actionResult());
   api.CreateTwitchReward.mockResolvedValue(actionResult());
   api.ApplyMode.mockResolvedValue(actionResult({...mockStatus, currentMode: '3D', currentModeLabel: '3D VTuber Mode'}));
@@ -178,7 +175,7 @@ describe('App', () => {
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
-    expect(savedConfig.obs.host).toBe('obs-machine');
+    expect(savedConfig.config.obs.host).toBe('obs-machine');
     await waitFor(() => expect(api.TestOBSConnection).toHaveBeenCalledTimes(1));
   });
 
@@ -206,7 +203,7 @@ describe('App', () => {
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
-    expect(savedConfig.twitch.clientId).toBe('new-client-id');
+    expect(savedConfig.config.twitch.clientId).toBe('new-client-id');
     await waitFor(() => expect(api.StartTwitchLogin).toHaveBeenCalledTimes(1));
   });
 
@@ -244,7 +241,7 @@ describe('App', () => {
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
-    expect(savedConfig.startupMode).toBe('always-3d');
+    expect(savedConfig.config.startupMode).toBe('always-3d');
   });
 
   it('refreshes Twitch rewards from the backend action', async () => {
@@ -268,7 +265,7 @@ describe('App', () => {
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
-    expect(savedConfig.refreshRewardsOnStartup).toBe(true);
+    expect(savedConfig.config.refreshRewardsOnStartup).toBe(true);
   });
 
   it('saves selected scene sources with their OBS scene item ids', async () => {
@@ -284,8 +281,8 @@ describe('App', () => {
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
-    expect(savedConfig.sceneMappings[0].pngTuberSource).toBe('PNG');
-    expect(savedConfig.sceneMappings[0].pngTuberItemId).toBe(11);
+    expect(savedConfig.config.sceneMappings[0].pngTuberSource).toBe('PNG');
+    expect(savedConfig.config.sceneMappings[0].pngTuberItemId).toBe(11);
   });
 
   it('enables a scene when a VTuber source is selected', async () => {
@@ -301,9 +298,9 @@ describe('App', () => {
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
-    expect(savedConfig.sceneMappings[1].enabled).toBe(true);
-    expect(savedConfig.sceneMappings[1].vtuberSource).toBe('PNG BRB');
-    expect(savedConfig.sceneMappings[1].vtuberItemId).toBe(20);
+    expect(savedConfig.config.sceneMappings[1].enabled).toBe(true);
+    expect(savedConfig.config.sceneMappings[1].vtuberSource).toBe('PNG BRB');
+    expect(savedConfig.config.sceneMappings[1].vtuberItemId).toBe(20);
   });
 
   it('runs OBS-only test mode actions after saving settings', async () => {
@@ -319,7 +316,7 @@ describe('App', () => {
     expect(api.SaveConfig).toHaveBeenCalled();
   });
 
-  it('hides the client secret field and only shows config paths when settings are open', async () => {
+  it('hides the client secret field and config paths from the settings view', async () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
@@ -327,8 +324,8 @@ describe('App', () => {
     expect(screen.queryByLabelText(/Twitch Client Secret/i)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    expect(screen.getByText(/Config:/i)).toBeInTheDocument();
-    expect(screen.getByText(/Log:/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Config:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Log:/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Twitch Client Secret/i)).not.toBeInTheDocument();
   });
 });

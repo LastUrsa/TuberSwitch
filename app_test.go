@@ -4,11 +4,15 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	appdto "TuberSwitch/internal/app"
 	"TuberSwitch/internal/config"
 	"TuberSwitch/internal/obs"
+	"TuberSwitch/internal/secrets"
 	"TuberSwitch/internal/twitch"
 )
 
@@ -116,8 +120,9 @@ func TestApplyOBSModeTogglesSelectedSourcesAcrossScenes(t *testing.T) {
 func TestApplyTwitchModeOnlyUpdatesManageable3DRewards(t *testing.T) {
 	fakeTwitch := &fakeTwitchService{}
 	app := &App{
-		twitch: fakeTwitch,
-		logger: log.Default(),
+		twitch:      fakeTwitch,
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
 		cfg: config.Config{
 			Twitch:       config.TwitchConfig{ClientID: "client", AccessToken: "token"},
 			ModeProfiles: config.DefaultProfiles(),
@@ -174,10 +179,11 @@ func TestRefreshRewardsMarksManageableAndClearsReadonly3DOnly(t *testing.T) {
 		},
 	}
 	app := &App{
-		obs:    &fakeOBSService{},
-		twitch: fakeTwitch,
-		store:  config.NewStore(filepath.Join(t.TempDir(), "config.json")),
-		logger: log.Default(),
+		obs:         &fakeOBSService{},
+		twitch:      fakeTwitch,
+		store:       config.NewStore(filepath.Join(t.TempDir(), "config.json")),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
 		cfg: config.Config{
 			Twitch: config.TwitchConfig{ClientID: "client", AccessToken: "token"},
 			RewardMappings: []config.RewardMapping{
@@ -210,11 +216,12 @@ func TestCreateTwitchRewardPersistsManageableMapping(t *testing.T) {
 		createdReward: twitch.Reward{ID: "new", Title: "Throw Tomato", Manageable: true},
 	}
 	app := &App{
-		obs:    &fakeOBSService{},
-		twitch: fakeTwitch,
-		store:  config.NewStore(filepath.Join(t.TempDir(), "config.json")),
-		logger: log.Default(),
-		cfg:    config.Config{Twitch: config.TwitchConfig{ClientID: "client", AccessToken: "token"}},
+		obs:         &fakeOBSService{},
+		twitch:      fakeTwitch,
+		store:       config.NewStore(filepath.Join(t.TempDir(), "config.json")),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
+		cfg:         config.Config{Twitch: config.TwitchConfig{ClientID: "client", AccessToken: "token"}},
 	}
 
 	result := app.CreateTwitchReward("Throw Tomato", 500, "")
@@ -234,10 +241,11 @@ func TestApplyModeReportsTwitchFailureAndPersistsMode(t *testing.T) {
 	}
 	fakeTwitch := &fakeTwitchService{rewardErrors: map[string]error{"fail": fakeError("boom")}}
 	app := &App{
-		obs:    fakeOBS,
-		twitch: fakeTwitch,
-		store:  config.NewStore(filepath.Join(t.TempDir(), "config.json")),
-		logger: log.Default(),
+		obs:         fakeOBS,
+		twitch:      fakeTwitch,
+		store:       config.NewStore(filepath.Join(t.TempDir(), "config.json")),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
 		cfg: config.Config{
 			OBS:          config.OBSConfig{Host: "127.0.0.1", Port: 4455},
 			Twitch:       config.TwitchConfig{ClientID: "client", AccessToken: "token"},
@@ -273,10 +281,11 @@ func TestApplyModeReportsOBSFailureAndPersistsMode(t *testing.T) {
 		visibilityErrors: map[string]error{"Main/VTuber": fakeError("obs failed")},
 	}
 	app := &App{
-		obs:    fakeOBS,
-		twitch: &fakeTwitchService{},
-		store:  config.NewStore(filepath.Join(t.TempDir(), "config.json")),
-		logger: log.Default(),
+		obs:         fakeOBS,
+		twitch:      &fakeTwitchService{},
+		store:       config.NewStore(filepath.Join(t.TempDir(), "config.json")),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
 		cfg: config.Config{
 			OBS:          config.OBSConfig{Host: "127.0.0.1", Port: 4455},
 			ModeProfiles: config.DefaultProfiles(),
@@ -293,6 +302,142 @@ func TestApplyModeReportsOBSFailureAndPersistsMode(t *testing.T) {
 	}
 	if app.cfg.CurrentMode != config.Mode3D {
 		t.Fatalf("current mode = %q", app.cfg.CurrentMode)
+	}
+}
+
+func TestStatusLockedRedactsSecrets(t *testing.T) {
+	app := &App{
+		obs:    &fakeOBSService{},
+		logger: log.Default(),
+		cfg: config.Config{
+			OBS: config.OBSConfig{Host: "127.0.0.1", Port: 4455, Password: "obs-secret"},
+			Twitch: config.TwitchConfig{
+				ClientID:     "client",
+				ChannelID:    "channel",
+				ChannelName:  "Streamer",
+				AccessToken:  "access-token",
+				RefreshToken: "refresh-token",
+				TokenExpiry:  "2026-01-01T00:00:00Z",
+			},
+			ModeProfiles: config.DefaultProfiles(),
+			CurrentMode:  config.ModePNG,
+		},
+	}
+
+	status := app.statusLocked()
+	if !status.Config.OBS.PasswordConfigured {
+		t.Fatalf("expected OBS passwordConfigured to be true")
+	}
+	if status.Config.Twitch.ChannelName != "Streamer" {
+		t.Fatalf("unexpected channel name: %#v", status.Config.Twitch)
+	}
+}
+
+func TestTrustedBrowserURLRejectsUnexpectedHosts(t *testing.T) {
+	if _, err := trustedBrowserURL("https://www.twitch.tv/activate"); err != nil {
+		t.Fatalf("trusted twitch host rejected: %v", err)
+	}
+	if _, err := trustedBrowserURL("http://www.twitch.tv/activate"); err == nil {
+		t.Fatalf("expected non-https URL rejection")
+	}
+	if _, err := trustedBrowserURL("https://example.com/activate"); err == nil {
+		t.Fatalf("expected unexpected host rejection")
+	}
+}
+
+func TestInitSecretsMigratesLegacyConfigSecretsAndKeepsThemInMemory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	store := config.NewStore(path)
+	secretStore := &fakeSecretStore{}
+	app := &App{
+		store:       store,
+		secretStore: secretStore,
+		logger:      log.Default(),
+		cfg: config.Config{
+			OBS: config.OBSConfig{Host: "127.0.0.1", Port: 4455, Password: "obs-secret"},
+			Twitch: config.TwitchConfig{
+				ClientID:     "client",
+				AccessToken:  "access-token",
+				RefreshToken: "refresh-token",
+				TokenExpiry:  "2026-01-01T00:00:00Z",
+			},
+		},
+	}
+
+	app.initSecrets()
+
+	if secretStore.obsPassword != "obs-secret" {
+		t.Fatalf("obs password not migrated: %#v", secretStore)
+	}
+	if secretStore.twitchTokens.AccessToken != "access-token" || secretStore.twitchTokens.RefreshToken != "refresh-token" {
+		t.Fatalf("twitch tokens not migrated: %#v", secretStore.twitchTokens)
+	}
+	if app.cfg.OBS.Password != "obs-secret" {
+		t.Fatalf("obs password not reloaded into memory: %q", app.cfg.OBS.Password)
+	}
+	if app.cfg.Twitch.AccessToken != "access-token" || app.cfg.Twitch.RefreshToken != "refresh-token" {
+		t.Fatalf("twitch tokens not reloaded into memory: %#v", app.cfg.Twitch)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	text := string(data)
+	if strings.Contains(text, "obs-secret") || strings.Contains(text, "access-token") || strings.Contains(text, "refresh-token") {
+		t.Fatalf("legacy secrets remained in persisted config: %s", text)
+	}
+}
+
+func TestSaveConfigReturnsErrorWhenSecureOBSSaveFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	app := &App{
+		store:       config.NewStore(path),
+		secretStore: &fakeSecretStore{saveOBSPasswordErr: fakeError("keyring offline")},
+		logger:      log.Default(),
+		obs:         &fakeOBSService{},
+		cfg: config.Config{
+			OBS:          config.OBSConfig{Host: "127.0.0.1", Port: 4455, Password: "old-secret"},
+			ModeProfiles: config.DefaultProfiles(),
+			CurrentMode:  config.ModePNG,
+		},
+	}
+
+	result := app.SaveConfig(appdto.SettingsInput{
+		Config:            app.settingsLocked(),
+		OBSPassword:       "new-secret",
+		UpdateOBSPassword: true,
+	})
+
+	if result.OK {
+		t.Fatalf("expected failure result")
+	}
+	if got := result.Errors[0]; got != "keyring offline" {
+		t.Fatalf("unexpected error: %#v", result.Errors)
+	}
+	if app.cfg.OBS.Password != "old-secret" {
+		t.Fatalf("obs password changed despite failure: %q", app.cfg.OBS.Password)
+	}
+}
+
+func TestRefreshRewardsReturnsErrorWhenSecureTokenSaveFails(t *testing.T) {
+	app := &App{
+		store:       config.NewStore(filepath.Join(t.TempDir(), "config.json")),
+		secretStore: &fakeSecretStore{saveTwitchTokensErr: fakeError("keyring write failed")},
+		logger:      log.Default(),
+		obs:         &fakeOBSService{},
+		twitch: &fakeTwitchService{
+			allRewards:        []twitch.Reward{{ID: "reward", Title: "Dance"}},
+			manageableRewards: []twitch.Reward{{ID: "reward", Title: "Dance", Manageable: true}},
+		},
+		cfg: config.Config{
+			Twitch: config.TwitchConfig{ClientID: "client", AccessToken: "token"},
+		},
+	}
+
+	_, err := app.refreshRewards(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "keyring write failed") {
+		t.Fatalf("expected secure token save error, got %v", err)
 	}
 }
 
@@ -381,4 +526,37 @@ func (f *fakeTwitchService) CreateReward(context.Context, config.TwitchConfig, s
 type rewardCall struct {
 	rewardID string
 	enabled  bool
+}
+
+type fakeSecretStore struct {
+	obsPassword         string
+	twitchTokens        secrets.TwitchTokens
+	loadOBSPasswordErr  error
+	saveOBSPasswordErr  error
+	loadTwitchTokensErr error
+	saveTwitchTokensErr error
+}
+
+func (f *fakeSecretStore) LoadOBSPassword() (string, error) {
+	return f.obsPassword, f.loadOBSPasswordErr
+}
+
+func (f *fakeSecretStore) SaveOBSPassword(password string) error {
+	if f.saveOBSPasswordErr != nil {
+		return f.saveOBSPasswordErr
+	}
+	f.obsPassword = password
+	return nil
+}
+
+func (f *fakeSecretStore) LoadTwitchTokens() (secrets.TwitchTokens, error) {
+	return f.twitchTokens, f.loadTwitchTokensErr
+}
+
+func (f *fakeSecretStore) SaveTwitchTokens(tokens secrets.TwitchTokens) error {
+	if f.saveTwitchTokensErr != nil {
+		return f.saveTwitchTokensErr
+	}
+	f.twitchTokens = tokens
+	return nil
 }

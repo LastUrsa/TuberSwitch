@@ -144,3 +144,31 @@ func TestClientWebSocketHandshakeAndRequests(t *testing.T) {
 		t.Fatalf("visibility payload = %#v", setVisibilityPayload)
 	}
 }
+
+func TestValidateHostRejectsRemoteByDefault(t *testing.T) {
+	err := validateHost(config.OBSConfig{Host: "192.168.1.50", Port: 4455})
+	if err == nil {
+		t.Fatalf("expected remote host rejection")
+	}
+}
+
+func TestValidateHostAllowsLoopbackAndExplicitRemote(t *testing.T) {
+	if err := validateHost(config.OBSConfig{Host: "127.0.0.1", Port: 4455}); err != nil {
+		t.Fatalf("loopback host rejected: %v", err)
+	}
+	if err := validateHost(config.OBSConfig{Host: "::1", Port: 4455}); err != nil {
+		t.Fatalf("ipv6 loopback host rejected: %v", err)
+	}
+	if err := validateHost(config.OBSConfig{Host: "192.168.1.50", Port: 4455, AllowRemote: true}); err != nil {
+		t.Fatalf("explicit remote host rejected: %v", err)
+	}
+}
+
+func TestTransportSchemeUsesWSForLocalAndWSSForRemote(t *testing.T) {
+	if got := transportScheme(config.OBSConfig{Host: "127.0.0.1", Port: 4455}); got != "ws" {
+		t.Fatalf("local transport scheme = %q", got)
+	}
+	if got := transportScheme(config.OBSConfig{Host: "192.168.1.50", Port: 4455, AllowRemote: true}); got != "wss" {
+		t.Fatalf("remote transport scheme = %q", got)
+	}
+}
