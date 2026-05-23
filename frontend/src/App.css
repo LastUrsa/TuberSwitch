@@ -227,6 +227,12 @@ label {
   gap: 6px;
 }
 
+.label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 input,
 select {
   width: 100%;
@@ -256,6 +262,23 @@ select {
   flex-wrap: wrap;
   gap: 10px;
   margin: 16px 0;
+}
+
+.collapsible-section {
+  margin: 14px 0 16px;
+}
+
+.collapsible-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  font-weight: 700;
+}
+
+.collapsible-body {
+  margin-top: 12px;
 }
 
 .channel-name {
@@ -361,6 +384,56 @@ select {
   background: #fbbf24;
   font-size: 13px;
   font-weight: 800;
+}
+
+.info-tip {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  color: #0f172a;
+  background: #7dd3fc;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: help;
+  outline: none;
+}
+
+.info-bubble {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 10px);
+  z-index: 4;
+  display: none;
+  width: min(320px, 70vw);
+  padding: 12px 14px;
+  border: 1px solid #3a4350;
+  border-radius: 8px;
+  color: #e2e8f0;
+  background: #0f1318;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+}
+
+.info-tip:hover .info-bubble,
+.info-tip:focus .info-bubble,
+.info-tip:focus-within .info-bubble {
+  display: grid;
+  gap: 8px;
+}
+
+.info-bubble p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.info-bubble a {
+  color: #7dd3fc;
+}
+
+.info-bubble code {
+  color: #f8fafc;
 }
 
 .scene-mapping-row label {

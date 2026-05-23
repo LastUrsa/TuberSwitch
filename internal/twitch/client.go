@@ -93,34 +93,12 @@ func (c *Client) WaitForDeviceToken(ctx context.Context, cfg config.TwitchConfig
 	}
 }
 
-func (c *Client) ExchangeCode(ctx context.Context, cfg config.TwitchConfig, code string) (config.TwitchConfig, error) {
-	if cfg.ClientID == "" || cfg.ClientSecret == "" {
-		return cfg, fmt.Errorf("Twitch client ID and client secret are required")
-	}
-	values := url.Values{}
-	values.Set("client_id", cfg.ClientID)
-	values.Set("client_secret", cfg.ClientSecret)
-	values.Set("code", code)
-	values.Set("grant_type", "authorization_code")
-	var token tokenResponse
-	if err := c.form(ctx, c.authURL+"/oauth2/token", values, &token); err != nil {
-		return cfg, err
-	}
-	cfg.AccessToken = token.AccessToken
-	cfg.RefreshToken = token.RefreshToken
-	cfg.TokenExpiry = time.Now().Add(time.Duration(token.ExpiresIn) * time.Second).Format(time.RFC3339)
-	return c.LoadUser(ctx, cfg)
-}
-
 func (c *Client) RefreshToken(ctx context.Context, cfg config.TwitchConfig) (config.TwitchConfig, error) {
 	if cfg.ClientID == "" || cfg.RefreshToken == "" {
 		return cfg, fmt.Errorf("Twitch refresh requires client ID and refresh token")
 	}
 	values := url.Values{}
 	values.Set("client_id", cfg.ClientID)
-	if cfg.ClientSecret != "" {
-		values.Set("client_secret", cfg.ClientSecret)
-	}
 	values.Set("grant_type", "refresh_token")
 	values.Set("refresh_token", cfg.RefreshToken)
 	var token tokenResponse
