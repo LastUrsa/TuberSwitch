@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	appdto "TuberSwitch/internal/app"
 	"TuberSwitch/internal/config"
@@ -19,6 +22,15 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+const (
+	currentAppVersion    = "0.1.0"
+	githubLatestRelease  = "https://api.github.com/repos/LastUrsa/TuberSwitch/releases/latest"
+	githubReleasesPage   = "https://github.com/LastUrsa/TuberSwitch/releases"
+	updateRequestTimeout = 8 * time.Second
+)
+
+var updateReleaseEndpoint = githubLatestRelease
 
 type App struct {
 	ctx         context.Context
@@ -126,6 +138,52 @@ func (a *App) GetStatus() appdto.Status {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.statusLocked()
+}
+
+func (a *App) CheckForUpdates() (appdto.UpdateInfo, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, updateReleaseEndpoint, nil)
+	if err != nil {
+		return appdto.UpdateInfo{}, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "TuberSwitch/"+currentAppVersion)
+
+	client := &http.Client{Timeout: updateRequestTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return appdto.UpdateInfo{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return appdto.UpdateInfo{}, fmt.Errorf("update check failed: GitHub returned %s", resp.Status)
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return appdto.UpdateInfo{}, err
+	}
+
+	latestVersion := normalizeVersion(release.TagName)
+	if latestVersion == "" {
+		latestVersion = currentAppVersion
+	}
+	updateAvailable := compareVersions(latestVersion, currentAppVersion) > 0
+	message := "You're running the latest version."
+	if updateAvailable {
+		message = fmt.Sprintf("Version %s is available.", latestVersion)
+	}
+
+	return appdto.UpdateInfo{
+		CurrentVersion:  currentAppVersion,
+		LatestVersion:   latestVersion,
+		UpdateAvailable: updateAvailable,
+		ReleaseURL:      githubReleasesPage,
+		Message:         message,
+	}, nil
 }
 
 func (a *App) SaveConfig(input appdto.SettingsInput) appdto.ActionResult {
@@ -773,4 +831,39 @@ func trustedBrowserURL(raw string) (string, error) {
 	default:
 		return "", fmt.Errorf("refusing to open unexpected Twitch login host %q", host)
 	}
+}
+
+func normalizeVersion(version string) string {
+	return strings.TrimPrefix(strings.TrimSpace(version), "v")
+}
+
+func compareVersions(left string, right string) int {
+	leftParts := strings.Split(normalizeVersion(left), ".")
+	rightParts := strings.Split(normalizeVersion(right), ".")
+	maxLen := len(leftParts)
+	if len(rightParts) > maxLen {
+		maxLen = len(rightParts)
+	}
+	for i := 0; i < maxLen; i++ {
+		leftValue := versionPart(leftParts, i)
+		rightValue := versionPart(rightParts, i)
+		if leftValue > rightValue {
+			return 1
+		}
+		if leftValue < rightValue {
+			return -1
+		}
+	}
+	return 0
+}
+
+func versionPart(parts []string, index int) int {
+	if index >= len(parts) {
+		return 0
+	}
+	value, err := strconv.Atoi(parts[index])
+	if err != nil {
+		return 0
+	}
+	return value
 }

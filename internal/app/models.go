@@ -71,3 +71,11 @@ type SettingsInput struct {
 	OBSPassword       string   `json:"obsPassword"`
 	UpdateOBSPassword bool     `json:"updateObsPassword"`
 }
+
+type UpdateInfo struct {
+	CurrentVersion string `json:"currentVersion"`
+	LatestVersion  string `json:"latestVersion"`
+	UpdateAvailable bool  `json:"updateAvailable"`
+	ReleaseURL     string `json:"releaseUrl"`
+	Message        string `json:"message"`
+}

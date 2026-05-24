@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -342,6 +344,79 @@ func TestTrustedBrowserURLRejectsUnexpectedHosts(t *testing.T) {
 	}
 	if _, err := trustedBrowserURL("https://example.com/activate"); err == nil {
 		t.Fatalf("expected unexpected host rejection")
+	}
+}
+
+func TestCheckForUpdatesReportsAvailableVersionAndUsesFixedReleasePage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s", r.Method)
+		}
+		if got := r.Header.Get("Accept"); got != "application/vnd.github+json" {
+			t.Fatalf("accept header = %q", got)
+		}
+		if got := r.Header.Get("User-Agent"); got != "TuberSwitch/"+currentAppVersion {
+			t.Fatalf("user agent = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"tag_name":"v0.2.0","html_url":"https://example.com/bad"}`))
+	}))
+	defer server.Close()
+
+	previousEndpoint := updateReleaseEndpoint
+	updateReleaseEndpoint = server.URL
+	defer func() { updateReleaseEndpoint = previousEndpoint }()
+
+	info, err := (&App{}).CheckForUpdates()
+	if err != nil {
+		t.Fatalf("CheckForUpdates: %v", err)
+	}
+	if !info.UpdateAvailable {
+		t.Fatalf("expected update available: %#v", info)
+	}
+	if info.LatestVersion != "0.2.0" {
+		t.Fatalf("latest version = %q", info.LatestVersion)
+	}
+	if info.ReleaseURL != githubReleasesPage {
+		t.Fatalf("release url = %q", info.ReleaseURL)
+	}
+}
+
+func TestCheckForUpdatesReturnsErrorOnUnexpectedStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	previousEndpoint := updateReleaseEndpoint
+	updateReleaseEndpoint = server.URL
+	defer func() { updateReleaseEndpoint = previousEndpoint }()
+
+	_, err := (&App{}).CheckForUpdates()
+	if err == nil || !strings.Contains(err.Error(), "GitHub returned 429") {
+		t.Fatalf("expected status error, got %v", err)
+	}
+}
+
+func TestCompareVersions(t *testing.T) {
+	cases := []struct {
+		name  string
+		left  string
+		right string
+		want  int
+	}{
+		{name: "equal", left: "0.1.0", right: "0.1.0", want: 0},
+		{name: "trim prefix", left: "v0.2.0", right: "0.1.9", want: 1},
+		{name: "missing patch treated as zero", left: "1.2", right: "1.2.0", want: 0},
+		{name: "lower version", left: "1.2.3", right: "1.3.0", want: -1},
+		{name: "invalid segment treated as zero", left: "1.bad.0", right: "1.0.1", want: -1},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := compareVersions(tc.left, tc.right); got != tc.want {
+				t.Fatalf("compareVersions(%q, %q) = %d, want %d", tc.left, tc.right, got, tc.want)
+			}
+		})
 	}
 }
 

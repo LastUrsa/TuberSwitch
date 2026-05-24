@@ -5,6 +5,8 @@ import {app} from '../models';
 
 export function ApplyMode(arg1:config.Mode):Promise<app.ActionResult>;
 
+export function CheckForUpdates():Promise<app.UpdateInfo>;
+
 export function CreateTwitchReward(arg1:string,arg2:number,arg3:string):Promise<app.ActionResult>;
 
 export function GetOBSInventory(arg1:string):Promise<app.OBSInventory>;
