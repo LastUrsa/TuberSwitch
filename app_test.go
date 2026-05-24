@@ -358,7 +358,7 @@ func TestCheckForUpdatesReportsAvailableVersionAndUsesFixedReleasePage(t *testin
 		if got := r.Header.Get("User-Agent"); got != "TuberSwitch/"+currentAppVersion {
 			t.Fatalf("user agent = %q", got)
 		}
-		_, _ = w.Write([]byte(`{"tag_name":"v0.2.0","html_url":"https://example.com/bad"}`))
+		_, _ = w.Write([]byte(`{"tag_name":"v0.3.0","html_url":"https://example.com/bad"}`))
 	}))
 	defer server.Close()
 
@@ -373,7 +373,7 @@ func TestCheckForUpdatesReportsAvailableVersionAndUsesFixedReleasePage(t *testin
 	if !info.UpdateAvailable {
 		t.Fatalf("expected update available: %#v", info)
 	}
-	if info.LatestVersion != "0.2.0" {
+	if info.LatestVersion != "0.3.0" {
 		t.Fatalf("latest version = %q", info.LatestVersion)
 	}
 	if info.ReleaseURL != githubReleasesPage {

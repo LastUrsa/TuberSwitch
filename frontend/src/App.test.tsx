@@ -74,8 +74,8 @@ beforeEach(() => {
   api.GetStatus.mockResolvedValue(structuredClone(mockStatus));
   api.GetTwitchRewards.mockResolvedValue(structuredClone(mockRewards));
   api.CheckForUpdates.mockResolvedValue({
-    currentVersion: '0.1.0',
-    latestVersion: '0.1.0',
+    currentVersion: '0.2.0',
+    latestVersion: '0.2.0',
     updateAvailable: false,
     releaseUrl: 'https://github.com/LastUrsa/TuberSwitch/releases',
     message: "You're running the latest version.",
@@ -115,7 +115,7 @@ describe('App', () => {
 
   it('checks for updates from the General tab and shows the releases action when an update is available', async () => {
     api.CheckForUpdates.mockResolvedValueOnce({
-      currentVersion: '0.1.0',
+      currentVersion: '0.2.0',
       latestVersion: '0.2.0',
       updateAvailable: true,
       releaseUrl: 'https://github.com/LastUrsa/TuberSwitch/releases',
