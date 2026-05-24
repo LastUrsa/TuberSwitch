@@ -1,51 +1,67 @@
 # TuberSwitch
 
-TuberSwitch is a Windows desktop app for VTubers who switch between a 3D VTuber source and a PNG Tuber source.
+TuberSwitch is a Windows desktop app for VTubers who switch between a 3D VTuber source and a PNG Tuber source in OBS, while also keeping Twitch Channel Point rewards in sync with the active mode.
 
-The app controls two things from one toggle:
+It is built with Wails, Go, and React.
 
-- OBS source visibility through OBS WebSocket v5.
-- Twitch Channel Point reward availability through the Twitch Helix API.
+## What It Does
 
-The MVP is a standalone Wails desktop app, not a native OBS plugin.
+TuberSwitch coordinates two systems from one mode switch:
 
-## Current MVP Features
+- OBS source visibility through OBS WebSocket v5
+- Twitch Channel Point reward availability through the Twitch Helix API
 
-- 3D/PNG mode toggle.
-- OBS connection test.
-- Sync scenes and sources from OBS.
-- Scene/source dropdown selection.
-- Stores OBS scene item IDs after selection/sync.
-- OBS-only `Test 3D` and `Test PNG` buttons.
-- Twitch OAuth login through Twitch Device Code Grant flow.
-- Fetch custom Channel Point rewards.
-- Mark rewards as `3D Only`.
-- Hide reward IDs from normal UI.
-- Show manageable and unmanageable rewards separately.
-- Create new rewards under this Twitch app/client ID.
-- Enable `3D Only` rewards in 3D mode.
-- Disable `3D Only` rewards in PNG mode.
-- Leave all other rewards untouched.
-- Optional Twitch reward refresh on startup.
-- Startup mode: restore last, always 3D, or always PNG.
-- Local JSON config and local log file.
+When you switch modes, the app can:
 
-## Prerequisites
+- show the configured 3D source and hide the configured PNG source
+- or hide the configured 3D source and show the configured PNG source
+- enable Twitch rewards marked as `3D Only` in 3D mode
+- disable those same rewards in PNG mode
 
-Install:
+Unchecked rewards are left alone.
 
-- Go
+## Current Feature Set
+
+- Compact desktop UI with a single primary mode switch
+- OBS and Twitch connection status indicators in the app header
+- Resizable settings experience that expands the native window when settings open
+- Tabbed settings layout:
+  - `General`
+  - `OBS Settings`
+  - `Twitch Settings`
+- Dark and light themes with persisted theme selection
+- Built-in update check against GitHub Releases
+- OBS scene and source sync
+- Scene-by-scene source mapping for both 3D and PNG modes
+- Per-scene enable/disable control
+- Optional filter to show only selected scenes
+- Startup mode options:
+  - restore last mode
+  - always 3D
+  - always PNG
+- Twitch Device Code login flow
+- Reward refresh from Twitch
+- Create new rewards under the connected Twitch app
+- Separate manageable and unmanageable rewards
+- Mark manageable rewards as `3D Only`
+- Secure OBS password storage in the OS credential store
+- Secure Twitch token storage in the OS credential store
+- Local config and log files
+- Windows app icon / packaged desktop executable
+
+## Requirements
+
+### Runtime
+
+- Windows
+- Microsoft WebView2 Runtime
+- OBS Studio with OBS WebSocket v5 enabled
+
+### Development
+
+- Go `1.25+`
 - Node.js with npm
-- Wails v2 CLI
-- WebView2 Runtime
-
-On this machine, Wails Doctor reported the system ready with:
-
-- Go 1.26.3
-- Node 24.16.0
-- npm 11.13.0
-- Wails 2.12.0
-- WebView2 installed
+- Wails CLI `v2.12.0` or compatible `v2`
 
 Install Wails if needed:
 
@@ -54,7 +70,7 @@ go install github.com/wailsapp/wails/v2/cmd/wails@latest
 wails doctor
 ```
 
-If a fresh terminal does not see `go`, `node`, or `wails`, restart PowerShell or add these to PATH:
+If a fresh terminal does not see `go`, `node`, or `wails`, make sure these are on `PATH`:
 
 ```text
 C:\Program Files\Go\bin
@@ -83,11 +99,18 @@ Build the Windows desktop app:
 wails build
 ```
 
+The packaged executable is written to:
+
+```text
+build\bin\TuberSwitch.exe
+```
+
 Useful validation commands:
 
 ```powershell
 go test ./...
 cd frontend
+npm test -- --run
 npm run build
 ```
 
@@ -101,83 +124,109 @@ In OBS:
 2. Enable the WebSocket server.
 3. Keep the default port `4455` unless you need another port.
 4. Set or copy the WebSocket password.
-5. Make sure the target scene contains both sources:
-   - VTuber source
-   - PNG Tuber source
+5. Make sure each target scene contains the sources you want to switch between.
 
 In TuberSwitch:
 
 1. Open `Settings`.
-2. Enter OBS host, port, and password.
-3. Click `Test OBS`.
-4. Click `Sync Scenes & Sources`.
-5. Select the scene, VTuber source, and PNG Tuber source from dropdowns.
-6. Click `Save`.
-7. Use `Test 3D` and `Test PNG` to verify OBS switching without touching Twitch rewards.
+2. Go to `OBS Settings`.
+3. Enter the OBS host, port, and password.
+4. Click `Save`.
+5. Click `Sync Scenes & Sources`.
+6. For each scene you want managed, choose:
+   - `VTuber Source`
+   - `PNG Tuber Source`
+7. Enable the scenes you want TuberSwitch to control.
 
-## Twitch App Setup
+Notes:
 
-Create a Twitch application in the Twitch Developer Console.
+- The OBS password is stored in the OS credential store, not in the JSON config file.
+- `Sync Scenes & Sources` saves settings first, so validation still runs before OBS sync.
 
-Recommended 2026 desktop flow:
+## Twitch Setup
 
-- Use Twitch Device Code Grant flow.
-- Register the application as a public client if the console offers a client type.
-- No redirect URI is used by TuberSwitch during login.
-- No public domain is required.
-- If the Developer Console requires an HTTPS redirect URI during registration, enter an unused placeholder such as `https://localhost`. TuberSwitch will not listen on that URL or use it for OAuth.
+Create an application in the Twitch Developer Console.
 
-Required scopes:
+Recommended desktop setup:
+
+- public client
+- Device Code Grant flow
+- scopes:
 
 ```text
 channel:read:redemptions
 channel:manage:redemptions
 ```
 
-Important Twitch limitation:
+If Twitch requires a redirect URI during app registration, use a placeholder such as:
 
-Twitch only allows an app to update custom Channel Point rewards that were created by the same Twitch application/client ID. Rewards created manually in the Twitch dashboard or by another tool may be visible to the broadcaster, but this app cannot enable or disable them through Helix.
+```text
+https://localhost
+```
 
-TuberSwitch handles this by:
-
-- Fetching all custom rewards for visibility.
-- Fetching the manageable subset from Twitch.
-- Showing app-created rewards in `Manageable Rewards`.
-- Showing dashboard/other-app rewards in `Unmanageable Rewards` as read-only.
-- Providing `Create Reward` so new rewards are created under this app's Client ID and can be toggled later.
+TuberSwitch does not rely on a local redirect listener for login. It uses the Twitch device activation flow.
 
 In TuberSwitch:
 
 1. Open `Settings`.
-2. Enter the Twitch Client ID.
-   The Twitch Client Secret is optional and not needed for public Device Code login.
-3. Click `Save`.
-4. Click `Login with Twitch`.
-5. The browser opens Twitch's device activation page.
-6. Approve the requested scopes.
-7. Return to TuberSwitch after the app reports that Twitch is connected.
+2. Go to `Twitch Settings`.
+3. Enter the Twitch Client ID.
+4. Click `Save`.
+5. Click `Login with Twitch`.
+6. Complete the device activation flow in the browser.
+7. Return to the app and click `Refresh Rewards` if needed.
 
-Token note: Twitch tokens and the OBS password are stored in the OS credential store instead of the local JSON config.
+Notes:
+
+- The Twitch Client ID is shown as a masked field in the UI, but it is not a secret in the same sense as a client secret.
+- Twitch access and refresh tokens are stored in the OS credential store.
+
+## Reward Management
+
+Twitch only allows an application to update custom Channel Point rewards that were created by that same Twitch application/client ID.
+
+That means:
+
+- rewards created manually in the Twitch dashboard may be visible
+- rewards created by another tool may be visible
+- but those rewards may not be manageable by this app
+
+TuberSwitch handles this by splitting rewards into:
+
+- `Manageable Rewards`
+- `Unmanageable Rewards`
+
+Use `Create Reward` inside the app if you want a reward that TuberSwitch can reliably enable and disable later.
+
+## General Settings
+
+The `General` tab currently includes:
+
+- theme selection
+- app version display
+- update check against GitHub Releases
+
+If an update is available, the app can open the GitHub Releases page directly.
 
 ## First-Time Workflow
 
 1. Launch TuberSwitch.
-2. Configure and test OBS.
-3. Sync scenes and sources.
-4. Select the scene, VTuber source, and PNG Tuber source.
-5. Use `Test 3D` and `Test PNG` to confirm OBS behavior.
-6. Configure Twitch Client ID.
-7. Login with Twitch.
-8. Click `Refresh Rewards`.
-9. Create any rewards that TuberSwitch should control, or use existing manageable rewards.
-10. Check `3D Only` for rewards that should only be available in 3D mode.
-11. Flip the main toggle.
+2. Open `Settings > OBS Settings`.
+3. Save OBS connection details.
+4. Sync scenes and sources.
+5. Configure the scenes you want to manage.
+6. Open `Settings > Twitch Settings`.
+7. Save the Twitch Client ID.
+8. Login with Twitch.
+9. Refresh rewards.
+10. Mark any rewards that should be `3D Only`.
+11. Use the main toggle to switch between modes.
 
 Expected behavior:
 
-- 3D mode shows the VTuber source, hides the PNG Tuber source, and enables checked rewards.
-- PNG mode hides the VTuber source, shows the PNG Tuber source, and disables checked rewards.
-- Unchecked rewards are untouched.
+- 3D mode shows the VTuber source, hides the PNG source, and enables checked `3D Only` rewards
+- PNG mode hides the VTuber source, shows the PNG source, and disables checked `3D Only` rewards
+- rewards not marked `3D Only` are not changed
 
 ## Local Files
 
@@ -188,37 +237,54 @@ Runtime files are stored outside the repo in the user config directory:
 %APPDATA%\TuberSwitch\tuberswitch.log
 ```
 
+Secrets are not stored in `config.json`. Sensitive values are stored in the OS credential store.
+
 ## Troubleshooting
 
-OBS disconnected:
+### OBS not connecting
 
 - Confirm OBS is running.
 - Confirm OBS WebSocket is enabled.
 - Confirm host, port, and password.
-- Confirm firewall rules allow localhost connections.
+- Confirm firewall rules allow the connection you are attempting.
+- Re-sync scenes and sources after major OBS scene/source changes.
 
-Source not found:
+### Scene mapping issues
 
 - Click `Sync Scenes & Sources`.
-- Confirm the selected scene contains the selected source.
+- Confirm the selected scene contains the selected sources.
 - OBS source names must match exactly.
+- If a scene is not enabled, TuberSwitch will not manage it.
 
-Twitch login fails:
+### Twitch login fails
 
 - Confirm the Client ID.
-- Confirm the app is allowed to use Device Code Grant flow.
-- If the browser does not open automatically, copy the activation URL from the app/log and open it manually.
-- If the device code expires, click `Login with Twitch` again.
+- Confirm the Twitch app is set up for the Device Code flow you intend to use.
+- If the device code expires, start login again.
 
-Rewards do not update:
+### Rewards do not update
 
 - Confirm the authenticated Twitch user owns the channel.
 - Confirm the app has `channel:manage:redemptions`.
-- Confirm the reward was created by this Twitch app/client ID.
-- Rewards created manually in Twitch's dashboard or by another app cannot be updated by TuberSwitch.
-- Some rewards may not be updateable; failures are logged and other rewards continue processing.
+- Confirm the reward was created by this Twitch app/client ID if you expect it to be manageable.
+- Some rewards may remain visible but read-only.
 
-Token expired:
+### Tokens or saved credentials seem stale
 
-- The app attempts refresh automatically.
-- If refresh fails, login with Twitch again.
+- Re-run Twitch login if token refresh fails.
+- Re-enter the OBS password if the saved credential is no longer valid.
+
+## Testing
+
+Current automated coverage includes:
+
+- Go unit tests for app logic, config handling, OBS/Twitch behavior, secret handling, and update-check behavior
+- Frontend tests for mode switching, settings flows, reward management, validation handling, and update-check UI behavior
+
+Run them with:
+
+```powershell
+go test ./...
+cd frontend
+npm test -- --run
+```

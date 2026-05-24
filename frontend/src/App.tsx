@@ -1,7 +1,10 @@
 import {type ReactNode, useEffect, useMemo, useState} from 'react';
 import './App.css';
+import tuberSwitchIcon from './assets/images/tuberswitch-icon.png';
+import {BrowserOpenURL, WindowSetMinSize, WindowSetSize} from '../wailsjs/runtime/runtime';
 import {
   ApplyMode,
+  CheckForUpdates,
   CreateTwitchReward,
   GetOBSInventory,
   GetStatus,
@@ -11,9 +14,6 @@ import {
   SetReward3DOnly,
   StartTwitchLogin,
   SyncOBS,
-  Test3DMode,
-  TestOBSConnection,
-  TestPNGMode,
 } from '../wailsjs/go/main/App';
 
 type Mode = '3D' | 'PNG';
@@ -92,7 +92,20 @@ type TwitchReward = {
   manageable: boolean;
 };
 
+type UpdateInfo = {
+  currentVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+  releaseUrl: string;
+  message: string;
+};
+
 const emptyInventory: OBSInventory = {scenes: [], sources: [], sourcesByScene: {}};
+const compactWindowSize = {width: 760, height: 460, minWidth: 680, minHeight: 420};
+const settingsWindowSize = {width: 1080, height: 820, minWidth: 920, minHeight: 700};
+type SettingsTab = 'general' | 'obs' | 'twitch';
+type ThemeMode = 'dark' | 'light';
+const themeStorageKey = 'tuberswitch-theme';
 
 function App() {
   const [status, setStatus] = useState<Status | null>(null);
@@ -112,10 +125,47 @@ function App() {
   const [unmanageableRewardsOpen, setUnmanageableRewardsOpen] = useState(false);
   const [obsPassword, setObsPassword] = useState('');
   const [obsPasswordDirty, setObsPasswordDirty] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    if (typeof window === 'undefined') return 'dark';
+    const storedTheme = window.localStorage.getItem(themeStorageKey);
+    return storedTheme === 'light' ? 'light' : 'dark';
+  });
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
 
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem(themeStorageKey, theme);
+  }, [theme]);
+
+  useEffect(() => {
+    WindowSetMinSize(
+      settingsOpen ? settingsWindowSize.minWidth : compactWindowSize.minWidth,
+      settingsOpen ? settingsWindowSize.minHeight : compactWindowSize.minHeight,
+    );
+    WindowSetSize(
+      settingsOpen ? settingsWindowSize.width : compactWindowSize.width,
+      settingsOpen ? settingsWindowSize.height : compactWindowSize.height,
+    );
+  }, [settingsOpen]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        closeSettings();
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [settingsOpen]);
 
   async function load() {
     const next = await GetStatus();
@@ -205,6 +255,28 @@ function App() {
     setDraft({...draft, sceneMappings});
   }
 
+  function openSettings() {
+    setSettingsTab('general');
+    setSettingsOpen(true);
+  }
+
+  function closeSettings() {
+    setSettingsOpen(false);
+  }
+
+  async function checkForUpdates() {
+    setUpdateBusy(true);
+    setErrors([]);
+    try {
+      const result = await CheckForUpdates();
+      setUpdateInfo(result as unknown as UpdateInfo);
+    } catch (error) {
+      setErrors([`Update check failed: ${String(error)}`]);
+    } finally {
+      setUpdateBusy(false);
+    }
+  }
+
   const is3D = status?.currentMode === '3D';
   const currentMode = status?.currentModeLabel || 'PNG VTuber Mode';
   const canInteract = !busy && status && draft;
@@ -217,13 +289,28 @@ function App() {
   return (
     <main className="app-shell">
       <section className="topbar">
-        <div>
-          <h1>TuberSwitch</h1>
-          <p>{currentMode}</p>
+        <div className="brand-block">
+          <img className="brand-icon" src={tuberSwitchIcon} alt="TuberSwitch icon" />
+          <div>
+            <h1>TuberSwitch</h1>
+            <p>{currentMode}</p>
+          </div>
         </div>
-        <button className="secondary" onClick={() => setSettingsOpen(!settingsOpen)}>
-          Settings
-        </button>
+        <div className="topbar-actions">
+          <div className="connection-strip" aria-label="Connection status">
+            <ConnectionStatus
+              label="OBS"
+              connected={!!status?.obsConnected}
+            />
+            <ConnectionStatus
+              label="Twitch"
+              connected={!!status?.twitchConnected}
+            />
+          </div>
+          <button className="secondary" onClick={settingsOpen ? closeSettings : openSettings}>
+            Settings
+          </button>
+        </div>
       </section>
 
       <section className="mode-panel">
@@ -242,34 +329,6 @@ function App() {
         </button>
       </section>
 
-      <section className="status-grid">
-        <StatusPill
-          label="OBS Connection"
-          value={status?.obsConnected ? 'Connected' : 'Disconnected'}
-          good={!!status?.obsConnected}
-          info={(
-            <>
-              <p>Enable OBS WebSocket in <strong>Tools &gt; WebSocket Server Settings</strong> before testing here.</p>
-            </>
-          )}
-        />
-        <StatusPill
-          label="Twitch Connection"
-          value={status?.twitchConnected ? 'Connected' : 'Disconnected'}
-          good={!!status?.twitchConnected}
-          info={(
-            <>
-              <p>Create a Twitch app in the <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noreferrer">Developer Console</a>.</p>
-              <p>Recommended setup: public app, scopes for <code>channel:read:redemptions</code> and <code>channel:manage:redemptions</code>, redirect <code>https://localhost</code> if Twitch requires one.</p>
-            </>
-          )}
-        />
-        <div className="status-card wide">
-          <span>Last Action</span>
-          <strong>{busy || status?.lastAction || 'Ready'}</strong>
-        </div>
-      </section>
-
       {errors.length > 0 && (
         <section className="error-list">
           {errors.map((error) => <div key={error}>{error}</div>)}
@@ -277,224 +336,314 @@ function App() {
       )}
 
       {settingsOpen && draft && (
-        <>
-          <section className="settings-layout">
-            <div className="settings-column obs-settings">
-              <h2>OBS Settings</h2>
-              <div className="form-grid">
-                <TextInput
-                  label="OBS WebSocket Host"
-                  info={(
-                    <>
-                      <p>Set this from <strong>Tools &gt; WebSocket Server Settings</strong> in OBS.</p>
-                      <p>The usual local default is <code>127.0.0.1</code>.</p>
-                    </>
-                  )}
-                  value={draft.obs.host}
-                  onChange={(value) => setDraft({...draft, obs: {...draft.obs, host: value}})}
-                />
-                <NumberInput
-                  label="OBS WebSocket Port"
-                  info={(
-                    <>
-                      <p>Use the port shown in <strong>Tools &gt; WebSocket Server Settings</strong> in OBS.</p>
-                    </>
-                  )}
-                  value={draft.obs.port}
-                  onChange={(value) => setDraft({...draft, obs: {...draft.obs, port: value}})}
-                />
-                <TextInput
-                  label="OBS WebSocket Password"
-                  info={(
-                    <>
-                      <p>Use the password from <strong>Tools &gt; WebSocket Server Settings</strong> in OBS.</p>
-                      <p>Stored securely in the OS credential store and never shown back in the app.</p>
-                    </>
-                  )}
-                  type="password"
-                  value={obsPassword}
-                  placeholder={draft.obs.passwordConfigured ? 'Saved securely. Enter a new value to replace it.' : 'Enter OBS WebSocket password'}
-                  onChange={(value) => {
-                    setObsPassword(value);
-                    setObsPasswordDirty(true);
-                  }}
-                />
-                <label className="check-row">
-                  <input
-                    type="checkbox"
-                    checked={draft.obs.allowRemote}
-                    onChange={(event) => setDraft({...draft, obs: {...draft.obs, allowRemote: event.currentTarget.checked}})}
-                  />
-                  <span>Allow remote OBS connections</span>
-                </label>
+        <div className="settings-modal-backdrop" onClick={closeSettings}>
+          <section
+            className="settings-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="settings-modal-header">
+              <div>
+                <h2 id="settings-title">Settings</h2>
+                <p>Configure OBS, Twitch, and reward behavior.</p>
               </div>
-              <div className="button-row">
-                <button onClick={saveSettings} disabled={!!busy}>Save</button>
-                <button onClick={() => saveThen('Testing OBS', () => TestOBSConnection() as unknown as Promise<ActionResult>)} disabled={!!busy}>Test OBS</button>
-                <button onClick={async () => {
-                  const result = await saveThen('Syncing OBS', () => SyncOBS() as unknown as Promise<ActionResult>);
-                  await loadInventory(result?.newStatus?.config?.sceneMappings?.[0]?.scene || '');
-                }} disabled={!!busy}>Sync Scenes & Sources</button>
+              <button type="button" className="secondary" onClick={closeSettings}>
+                Close
+              </button>
+            </div>
+
+            <section className="modal-layout">
+              <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+                <button
+                  type="button"
+                  role="tab"
+                  className={`settings-tab ${settingsTab === 'general' ? 'active' : ''}`}
+                  aria-selected={settingsTab === 'general'}
+                  onClick={() => setSettingsTab('general')}
+                >
+                  General
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className={`settings-tab ${settingsTab === 'obs' ? 'active' : ''}`}
+                  aria-selected={settingsTab === 'obs'}
+                  onClick={() => setSettingsTab('obs')}
+                >
+                  OBS Settings
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className={`settings-tab ${settingsTab === 'twitch' ? 'active' : ''}`}
+                  aria-selected={settingsTab === 'twitch'}
+                  onClick={() => setSettingsTab('twitch')}
+                >
+                  Twitch Settings
+                </button>
               </div>
 
-              <CollapsibleSection title="Scenes" open={scenesOpen} onToggle={setScenesOpen}>
-                <div className="mapping-toolbar">
-                  <label className="check-row">
-                    <input
-                      type="checkbox"
-                      checked={showSelectedScenesOnly}
-                      onChange={(event) => setShowSelectedScenesOnly(event.currentTarget.checked)}
-                    />
-                    <span>Show only selected scenes</span>
-                  </label>
-                  <span>{visibleSceneMappings.length} of {(draft.sceneMappings || []).length} scenes shown</span>
-                </div>
-
-                <div className="scene-mapping-table">
-                  <div className="scene-mapping-head">
-                    <span>Use</span>
-                    <span>Scene</span>
-                    <span>VTuber Source</span>
-                    <span>PNG Tuber Source</span>
+              {settingsTab === 'general' && (
+                <section className="settings-panel">
+                  <div className="settings-column">
+                    <h2>General Settings</h2>
+                    <div className="form-grid">
+                      <label>
+                        <FieldLabel text="Theme"/>
+                        <select value={theme} onChange={(event) => setTheme(event.currentTarget.value as ThemeMode)}>
+                          <option value="dark">Dark</option>
+                          <option value="light">Light</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className="settings-note">
+                      <span>Current version</span>
+                      <strong>{updateInfo?.currentVersion || '0.1.0'}</strong>
+                    </div>
+                    <div className="button-row">
+                      <button type="button" onClick={checkForUpdates} disabled={updateBusy}>
+                        {updateBusy ? 'Checking for Updates' : 'Check for Updates'}
+                      </button>
+                      {updateInfo?.updateAvailable && (
+                        <button type="button" className="secondary" onClick={() => BrowserOpenURL(updateInfo.releaseUrl)}>
+                          Open GitHub Releases
+                        </button>
+                      )}
+                    </div>
+                    {updateInfo && (
+                      <div className={`update-panel ${updateInfo.updateAvailable ? 'available' : 'current'}`}>
+                        <strong>{updateInfo.message}</strong>
+                        <span>Latest version: {updateInfo.latestVersion}</span>
+                      </div>
+                    )}
                   </div>
-                  {(draft.sceneMappings || []).length === 0 && <div className="empty-row">Sync OBS to load scenes</div>}
-                  {visibleSceneMappings.map(({mapping, index}) => {
-                    const sources = inventory.sourcesByScene?.[mapping.scene] || [];
-                    const missingSource = mapping.enabled && (!mapping.vtuberSource || !mapping.pngTuberSource);
-                    return (
-                      <div className="scene-mapping-row" key={mapping.scene || index}>
+                </section>
+              )}
+
+              {settingsTab === 'obs' && (
+                <section className="settings-panel">
+                  <div className="settings-column">
+                    <h2>OBS Settings</h2>
+                    <div className="form-grid settings-form-grid">
+                      <TextInput
+                        label="OBS WebSocket Host"
+                        info={(
+                          <>
+                            <p>Set this from <strong>Tools &gt; WebSocket Server Settings</strong> in OBS.</p>
+                            <p>The usual local default is <code>127.0.0.1</code>.</p>
+                          </>
+                        )}
+                        value={draft.obs.host}
+                        onChange={(value) => setDraft({...draft, obs: {...draft.obs, host: value}})}
+                      />
+                      <NumberInput
+                        label="OBS WebSocket Port"
+                        info={(
+                          <>
+                            <p>Use the port shown in <strong>Tools &gt; WebSocket Server Settings</strong> in OBS.</p>
+                          </>
+                        )}
+                        value={draft.obs.port}
+                        onChange={(value) => setDraft({...draft, obs: {...draft.obs, port: value}})}
+                      />
+                      <TextInput
+                        label="OBS WebSocket Password"
+                        info={(
+                          <>
+                            <p>Use the password from <strong>Tools &gt; WebSocket Server Settings</strong> in OBS.</p>
+                            <p>Stored securely in the OS credential store and never shown back in the app.</p>
+                          </>
+                        )}
+                        type="password"
+                        value={obsPassword}
+                        placeholder={draft.obs.passwordConfigured ? 'Saved securely. Enter a new value to replace it.' : 'Enter OBS WebSocket password'}
+                        onChange={(value) => {
+                          setObsPassword(value);
+                          setObsPasswordDirty(true);
+                        }}
+                      />
+                      <label className="check-row settings-checkbox-row">
                         <input
                           type="checkbox"
-                          checked={mapping.enabled}
-                          onChange={(event) => updateSceneMapping(index, {enabled: event.currentTarget.checked})}
+                          checked={draft.obs.allowRemote}
+                          onChange={(event) => setDraft({...draft, obs: {...draft.obs, allowRemote: event.currentTarget.checked}})}
                         />
-                        <strong className="scene-name">
-                          {missingSource && <span className="warning-icon" title="Only selected sources in this scene will be toggled">!</span>}
-                          <span>{mapping.scene}</span>
-                        </strong>
-                        <SourceSelect
-                          label="VTuber Source"
-                          value={mapping.vtuberSource}
-                          sources={sources}
-                          onChange={(name, id) => updateSceneMapping(index, {vtuberSource: name, vtuberItemId: id, enabled: true})}
-                        />
-                        <SourceSelect
-                          label="PNG Tuber Source"
-                          value={mapping.pngTuberSource}
-                          sources={sources}
-                          onChange={(name, id) => updateSceneMapping(index, {pngTuberSource: name, pngTuberItemId: id, enabled: true})}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </CollapsibleSection>
-
-              <div className="button-row">
-                <button onClick={() => saveThen('Testing 3D OBS', () => Test3DMode() as unknown as Promise<ActionResult>)} disabled={!!busy}>Test 3D</button>
-                <button onClick={() => saveThen('Testing PNG OBS', () => TestPNGMode() as unknown as Promise<ActionResult>)} disabled={!!busy}>Test PNG</button>
-              </div>
-            </div>
-
-            <div className="settings-column">
-              <h2>Twitch Settings</h2>
-              <div className="form-grid">
-                <TextInput
-                  label="Twitch Client ID"
-                  info={(
-                    <>
-                      <p>Create your app in the <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noreferrer">Twitch Developer Console</a>.</p>
-                      <p>Use a public app, request <code>channel:read:redemptions</code> and <code>channel:manage:redemptions</code>, and use <code>https://localhost</code> if Twitch insists on a redirect URI.</p>
-                      <p>Copy the Client ID from the app details page into this field.</p>
-                    </>
-                  )}
-                  value={draft.twitch.clientId}
-                  onChange={(value) => setDraft({...draft, twitch: {...draft.twitch, clientId: value}})}
-                />
-                <label className="check-row">
-                  <input
-                    type="checkbox"
-                    checked={draft.refreshRewardsOnStartup}
-                    onChange={(event) => setDraft({...draft, refreshRewardsOnStartup: event.currentTarget.checked})}
-                  />
-                  <span>Refresh Twitch rewards on startup</span>
-                </label>
-                <label>
-                  <FieldLabel text="Startup Mode"/>
-                  <select value={draft.startupMode} onChange={(event) => setDraft({...draft, startupMode: event.currentTarget.value as Config['startupMode']})}>
-                    <option value="restore-last">Restore Last Mode</option>
-                    <option value="always-3d">Always 3D</option>
-                    <option value="always-png">Always PNG</option>
-                  </select>
-                </label>
-              </div>
-              <div className="channel-name">
-                Authenticated Channel: <strong>{draft.twitch.channelName || 'Not connected'}</strong>
-              </div>
-              <div className="button-row">
-                <button onClick={saveSettings} disabled={!!busy}>Save</button>
-                <button onClick={() => saveThen('Logging in', () => StartTwitchLogin() as unknown as Promise<ActionResult>)} disabled={!!busy}>Login with Twitch</button>
-                <button onClick={() => saveThen('Refreshing rewards', () => RefreshTwitchRewards() as unknown as Promise<ActionResult>)} disabled={!!busy}>Refresh Rewards</button>
-              </div>
-
-              <CollapsibleSection title="Create Reward" open={createRewardOpen} onToggle={setCreateRewardOpen}>
-                <div className="create-reward">
-                  <TextInput label="New Reward Name" value={newRewardTitle} onChange={setNewRewardTitle}/>
-                  <NumberInput label="Cost" value={newRewardCost} onChange={setNewRewardCost}/>
-                  <TextInput label="Prompt (optional)" value={newRewardPrompt} onChange={setNewRewardPrompt}/>
-                  <button onClick={createReward} disabled={!!busy || !newRewardTitle.trim()}>Create Reward</button>
-                </div>
-              </CollapsibleSection>
-
-              <CollapsibleSection title="Manageable Rewards" open={manageableRewardsOpen} onToggle={setManageableRewardsOpen}>
-                <div className="reward-table">
-                  <div className="reward-head">
-                    <span>Reward Name</span>
-                    <span>3D Only</span>
-                  </div>
-                  {manageableRewards.length === 0 && <div className="empty-row">No manageable rewards loaded</div>}
-                  {manageableRewards.map((reward) => (
-                    <label className="reward-row" key={reward.id}>
-                      <span>{reward.title}</span>
-                      <input type="checkbox" checked={reward.is3DOnly} onChange={(event) => updateReward(reward.id, event.currentTarget.checked)}/>
-                    </label>
-                  ))}
-                </div>
-              </CollapsibleSection>
-
-              <CollapsibleSection title="Unmanageable Rewards" open={unmanageableRewardsOpen} onToggle={setUnmanageableRewardsOpen}>
-                <div className="reward-table">
-                  <div className="reward-head readonly">
-                    <span>Reward Name</span>
-                    <span>Status</span>
-                  </div>
-                  {unmanageableRewards.length === 0 && <div className="empty-row">No unmanageable rewards loaded</div>}
-                  {unmanageableRewards.map((reward) => (
-                    <div className="reward-row readonly" key={reward.id}>
-                      <span>{reward.title}</span>
-                      <span>Read-only</span>
+                        <span>Allow remote OBS connections</span>
+                      </label>
                     </div>
-                  ))}
-                </div>
-              </CollapsibleSection>
-            </div>
-          </section>
+                    <div className="button-row">
+                      <button onClick={saveSettings} disabled={!!busy}>Save</button>
+                      <button onClick={async () => {
+                        const result = await saveThen('Syncing OBS', () => SyncOBS() as unknown as Promise<ActionResult>);
+                        await loadInventory(result?.newStatus?.config?.sceneMappings?.[0]?.scene || '');
+                      }} disabled={!!busy}>Sync Scenes & Sources</button>
+                    </div>
 
-        </>
+                    <CollapsibleSection title="Scenes" open={scenesOpen} onToggle={setScenesOpen}>
+                      <div className="mapping-toolbar">
+                        <label className="check-row">
+                          <input
+                            type="checkbox"
+                            checked={showSelectedScenesOnly}
+                            onChange={(event) => setShowSelectedScenesOnly(event.currentTarget.checked)}
+                          />
+                          <span>Show only selected scenes</span>
+                        </label>
+                        <span>{visibleSceneMappings.length} of {(draft.sceneMappings || []).length} scenes shown</span>
+                      </div>
+
+                      <div className="scene-mapping-table">
+                        <div className="scene-mapping-head">
+                          <span>Use</span>
+                          <span>Scene</span>
+                          <span>VTuber Source</span>
+                          <span>PNG Tuber Source</span>
+                        </div>
+                        {(draft.sceneMappings || []).length === 0 && <div className="empty-row">Sync OBS to load scenes</div>}
+                        {visibleSceneMappings.map(({mapping, index}) => {
+                          const sources = inventory.sourcesByScene?.[mapping.scene] || [];
+                          const missingSource = mapping.enabled && (!mapping.vtuberSource || !mapping.pngTuberSource);
+                          return (
+                            <div className="scene-mapping-row" key={mapping.scene || index}>
+                              <input
+                                type="checkbox"
+                                checked={mapping.enabled}
+                                onChange={(event) => updateSceneMapping(index, {enabled: event.currentTarget.checked})}
+                              />
+                              <strong className="scene-name">
+                                {missingSource && <span className="warning-icon" title="Only selected sources in this scene will be toggled">!</span>}
+                                <span>{mapping.scene}</span>
+                              </strong>
+                              <SourceSelect
+                                label="VTuber Source"
+                                value={mapping.vtuberSource}
+                                sources={sources}
+                                onChange={(name, id) => updateSceneMapping(index, {vtuberSource: name, vtuberItemId: id, enabled: true})}
+                              />
+                              <SourceSelect
+                                label="PNG Tuber Source"
+                                value={mapping.pngTuberSource}
+                                sources={sources}
+                                onChange={(name, id) => updateSceneMapping(index, {pngTuberSource: name, pngTuberItemId: id, enabled: true})}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CollapsibleSection>
+
+                  </div>
+                </section>
+              )}
+
+              {settingsTab === 'twitch' && (
+                <section className="settings-panel">
+                  <div className="settings-column">
+                    <h2>Twitch Settings</h2>
+                    <div className="form-grid">
+                      <TextInput
+                        label="Twitch Client ID"
+                        info={(
+                          <>
+                            <p>Create your app in the <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noreferrer">Twitch Developer Console</a>.</p>
+                            <p>Use a public app, request <code>channel:read:redemptions</code> and <code>channel:manage:redemptions</code>, and use <code>https://localhost</code> if Twitch insists on a redirect URI.</p>
+                            <p>Copy the Client ID from the app details page into this field.</p>
+                          </>
+                        )}
+                        type="password"
+                        value={draft.twitch.clientId}
+                        placeholder="Enter Twitch Client ID"
+                        onChange={(value) => setDraft({...draft, twitch: {...draft.twitch, clientId: value}})}
+                      />
+                      <label className="check-row">
+                        <input
+                          type="checkbox"
+                          checked={draft.refreshRewardsOnStartup}
+                          onChange={(event) => setDraft({...draft, refreshRewardsOnStartup: event.currentTarget.checked})}
+                        />
+                        <span>Refresh Twitch rewards on startup</span>
+                      </label>
+                      <label>
+                        <FieldLabel text="Startup Mode"/>
+                        <select value={draft.startupMode} onChange={(event) => setDraft({...draft, startupMode: event.currentTarget.value as Config['startupMode']})}>
+                          <option value="restore-last">Restore Last Mode</option>
+                          <option value="always-3d">Always 3D</option>
+                          <option value="always-png">Always PNG</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className="channel-name">
+                      Authenticated Channel: <strong>{draft.twitch.channelName || 'Not connected'}</strong>
+                    </div>
+                    <div className="button-row">
+                      <button onClick={saveSettings} disabled={!!busy}>Save</button>
+                      <button onClick={() => saveThen('Logging in', () => StartTwitchLogin() as unknown as Promise<ActionResult>)} disabled={!!busy}>Login with Twitch</button>
+                      <button onClick={() => saveThen('Refreshing rewards', () => RefreshTwitchRewards() as unknown as Promise<ActionResult>)} disabled={!!busy}>Refresh Rewards</button>
+                    </div>
+
+                    <CollapsibleSection title="Create Reward" open={createRewardOpen} onToggle={setCreateRewardOpen}>
+                      <div className="create-reward">
+                        <TextInput label="New Reward Name" value={newRewardTitle} onChange={setNewRewardTitle}/>
+                        <NumberInput label="Cost" value={newRewardCost} onChange={setNewRewardCost}/>
+                        <TextInput label="Prompt (optional)" value={newRewardPrompt} onChange={setNewRewardPrompt}/>
+                        <button onClick={createReward} disabled={!!busy || !newRewardTitle.trim()}>Create Reward</button>
+                      </div>
+                    </CollapsibleSection>
+
+                    <CollapsibleSection title="Manageable Rewards" open={manageableRewardsOpen} onToggle={setManageableRewardsOpen}>
+                      <div className="reward-table">
+                        <div className="reward-head">
+                          <span>Reward Name</span>
+                          <span>3D Only</span>
+                        </div>
+                        {manageableRewards.length === 0 && <div className="empty-row">No manageable rewards loaded</div>}
+                        {manageableRewards.map((reward) => (
+                          <label className="reward-row" key={reward.id}>
+                            <span>{reward.title}</span>
+                            <input type="checkbox" checked={reward.is3DOnly} onChange={(event) => updateReward(reward.id, event.currentTarget.checked)}/>
+                          </label>
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+
+                    <CollapsibleSection title="Unmanageable Rewards" open={unmanageableRewardsOpen} onToggle={setUnmanageableRewardsOpen}>
+                      <div className="reward-table">
+                        <div className="reward-head readonly">
+                          <span>Reward Name</span>
+                          <span>Status</span>
+                        </div>
+                        {unmanageableRewards.length === 0 && <div className="empty-row">No unmanageable rewards loaded</div>}
+                        {unmanageableRewards.map((reward) => (
+                          <div className="reward-row readonly" key={reward.id}>
+                            <span>{reward.title}</span>
+                            <span>Read-only</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  </div>
+                </section>
+              )}
+            </section>
+          </section>
+        </div>
       )}
     </main>
   );
 }
 
-function StatusPill({label, value, good, info}: {label: string; value: string; good: boolean; info?: ReactNode}) {
+function ConnectionStatus({label, connected}: {label: string; connected: boolean}) {
   return (
-    <div className={`status-card ${good ? 'good' : 'bad'}`}>
-      <span className="label-row">
-        {label}
-        {info && <InfoTip>{info}</InfoTip>}
-      </span>
-      <strong>{value}</strong>
-    </div>
+    <span
+      className="connection-pill"
+      title={`${label} ${connected ? 'connected' : 'disconnected'}`}
+      aria-label={`${label} ${connected ? 'connected' : 'disconnected'}`}
+    >
+      <span className={`connection-dot ${connected ? 'connected' : 'disconnected'}`} aria-hidden="true" />
+      <span>{label}</span>
+    </span>
   );
 }
 
