@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run frontend tests with coverage
+        working-directory: frontend
+        run: npm run test:coverage
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Install NSIS
+        shell: powershell
+        run: choco install nsis -y
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Build release assets
+        shell: powershell
+        run: |
+          $env:Path += ";$(go env GOPATH)\bin;C:\Program Files (x86)\NSIS;C:\Program Files (x86)\NSIS\Bin"
+          wails build -clean -nsis
+          Compress-Archive -LiteralPath build/bin/TuberSwitch.exe -DestinationPath build/bin/TuberSwitch-windows-amd64-portable.zip -Force
+          $files = @(
+            "build/bin/TuberSwitch-amd64-installer.exe",
+            "build/bin/TuberSwitch-windows-amd64-portable.zip",
+            "build/bin/TuberSwitch.exe"
+          )
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower()
+            $name = Split-Path $file -Leaf
+            "$hash *$name"
+          }
+          Set-Content -LiteralPath build/bin/SHA256SUMS.txt -Value $lines
+
+      - name: Verify release assets
+        shell: powershell
+        run: |
+          $required = @(
+            "build/bin/TuberSwitch-amd64-installer.exe",
+            "build/bin/TuberSwitch-windows-amd64-portable.zip",
+            "build/bin/SHA256SUMS.txt"
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path $path)) {
+              throw "Missing expected release asset: $path"
+            }
+          }
+
+      - name: Publish GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: powershell
+        run: |
+          gh release create $env:GITHUB_REF_NAME `
+            "build/bin/TuberSwitch-amd64-installer.exe" `
+            "build/bin/TuberSwitch-windows-amd64-portable.zip" `
+            "build/bin/SHA256SUMS.txt" `
+            --title "TuberSwitch $env:GITHUB_REF_NAME" `
+            --generate-notes
