@@ -73,6 +73,7 @@ jobs:
         shell: powershell
         run: |
           $required = @(
+            "build/bin/TuberSwitch.exe",
             "build/bin/TuberSwitch-amd64-installer.exe",
             "build/bin/TuberSwitch-windows-amd64-portable.zip",
             "build/bin/SHA256SUMS.txt"
@@ -89,6 +90,7 @@ jobs:
         shell: powershell
         run: |
           gh release create $env:GITHUB_REF_NAME `
+            "build/bin/TuberSwitch.exe" `
             "build/bin/TuberSwitch-amd64-installer.exe" `
             "build/bin/TuberSwitch-windows-amd64-portable.zip" `
             "build/bin/SHA256SUMS.txt" `
