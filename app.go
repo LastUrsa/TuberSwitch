@@ -14,6 +14,7 @@ import (
 	"time"
 
 	appdto "TuberSwitch/internal/app"
+	"TuberSwitch/internal/appdetect"
 	"TuberSwitch/internal/config"
 	"TuberSwitch/internal/logging"
 	"TuberSwitch/internal/obs"
@@ -40,10 +41,24 @@ type App struct {
 	closeLog    func()
 	obs         obsService
 	twitch      fullTwitchService
+	detector    appDetectionService
 
 	mu         sync.Mutex
 	cfg        config.Config
 	lastAction string
+}
+
+type applyModeOptions struct {
+	applyTwitchChanges bool
+	source             string
+	recordManualSwitch bool
+}
+
+type appDetectionService interface {
+	Start(config.AppDetectionConfig)
+	Stop()
+	RecordManualOverride(time.Duration)
+	Snapshot() appdetect.Snapshot
 }
 
 type secretStore interface {
@@ -102,6 +117,7 @@ func NewApp() *App {
 		cfg:         cfg,
 		lastAction:  "Ready",
 	}
+	app.detector = appdetect.New(logger, appdetect.WindowsProcessProvider{}, app.applyModeFromDetection, app.currentMode)
 	return app.initSecrets()
 }
 
@@ -126,10 +142,16 @@ func (a *App) startup(ctx context.Context) {
 	if err := a.applyOBSMode(mode); err != nil {
 		a.logger.Printf("startup OBS mode apply failed: %v", err)
 	}
+	if a.detector != nil {
+		a.detector.Start(a.cfg.AppDetection)
+	}
 }
 
 func (a *App) shutdown(ctx context.Context) {
 	a.logger.Printf("shutdown")
+	if a.detector != nil {
+		a.detector.Stop()
+	}
 	a.obs.Close()
 	a.closeLog()
 }
@@ -188,11 +210,15 @@ func (a *App) CheckForUpdates() (appdto.UpdateInfo, error) {
 
 func (a *App) SaveConfig(input appdto.SettingsInput) appdto.ActionResult {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	next := a.updatedConfigLocked(input.Config)
+	if validationErrors := validateAppDetectionConfig(next.AppDetection); len(validationErrors) > 0 {
+		defer a.mu.Unlock()
+		return a.resultLocked(false, "App Detection settings are invalid", nil, validationErrors)
+	}
 	oldPassword := a.cfg.OBS.Password
 	if input.UpdateOBSPassword {
 		if err := a.secretStore.SaveOBSPassword(input.OBSPassword); err != nil {
+			defer a.mu.Unlock()
 			return a.resultLocked(false, "OBS password save failed", nil, []string{err.Error()})
 		}
 		next.OBS.Password = input.OBSPassword
@@ -203,10 +229,20 @@ func (a *App) SaveConfig(input appdto.SettingsInput) appdto.ActionResult {
 		if input.UpdateOBSPassword {
 			_ = a.secretStore.SaveOBSPassword(oldPassword)
 		}
+		defer a.mu.Unlock()
 		return a.resultLocked(false, "Config save failed", nil, []string{err.Error()})
 	}
 	a.cfg = next
 	a.lastAction = "Settings saved"
+	appDetection := a.cfg.AppDetection
+	a.mu.Unlock()
+
+	if a.detector != nil {
+		a.detector.Start(appDetection)
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	return a.resultLocked(true, "Settings saved", nil, nil)
 }
 
@@ -275,24 +311,11 @@ func (a *App) TestPNGMode() appdto.ActionResult {
 func (a *App) ApplyMode(mode config.Mode) appdto.ActionResult {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	warnings := []string{}
-	errors := []string{}
-	if err := a.applyOBSMode(mode); err != nil {
-		errors = append(errors, err.Error())
-	}
-	if errList := a.applyTwitchModeLocked(mode); len(errList) > 0 {
-		errors = append(errors, errList...)
-	}
-	a.cfg.CurrentMode = mode
-	if err := a.store.Save(a.cfg); err != nil {
-		errors = append(errors, err.Error())
-	}
-	if len(errors) > 0 {
-		a.lastAction = fmt.Sprintf("Switched to %s mode with errors", mode)
-		return a.resultLocked(false, a.lastAction, warnings, errors)
-	}
-	a.lastAction = fmt.Sprintf("Switched to %s Mode successfully", mode)
-	return a.resultLocked(true, a.lastAction, warnings, nil)
+	return a.applyModeLocked(mode, applyModeOptions{
+		applyTwitchChanges: true,
+		source:             "manual",
+		recordManualSwitch: true,
+	})
 }
 
 func (a *App) StartTwitchLogin() appdto.ActionResult {
@@ -630,12 +653,14 @@ func (a *App) statusLocked() appdto.Status {
 		label = profile.DisplayName
 	}
 	return appdto.Status{
-		Config:           a.settingsLocked(),
-		CurrentMode:      a.cfg.CurrentMode,
-		CurrentModeLabel: label,
-		OBSConnected:     a.obs.Connected(),
-		TwitchConnected:  a.cfg.Twitch.AccessToken != "",
-		LastAction:       a.lastAction,
+		Config:              a.settingsLocked(),
+		CurrentMode:         a.cfg.CurrentMode,
+		CurrentModeLabel:    label,
+		OBSConnected:        a.obs.Connected(),
+		TwitchConnected:     a.cfg.Twitch.AccessToken != "",
+		LastAction:          a.lastAction,
+		AppDetectionStatus:  a.appDetectionStatusLocked(),
+		AppDetectionEnabled: a.cfg.AppDetection.Enabled,
 	}
 }
 
@@ -787,6 +812,7 @@ func (a *App) settingsLocked() appdto.Settings {
 		StartupMode:             a.cfg.StartupMode,
 		CurrentMode:             a.cfg.CurrentMode,
 		RefreshRewardsOnStartup: a.cfg.RefreshRewardsOnStartup,
+		AppDetection:            a.cfg.AppDetection,
 	}
 }
 
@@ -804,8 +830,102 @@ func (a *App) updatedConfigLocked(settings appdto.Settings) config.Config {
 	next.StartupMode = settings.StartupMode
 	next.CurrentMode = settings.CurrentMode
 	next.RefreshRewardsOnStartup = settings.RefreshRewardsOnStartup
+	next.AppDetection = settings.AppDetection
 	next.Normalize()
 	return next
+}
+
+func (a *App) applyModeLocked(mode config.Mode, options applyModeOptions) appdto.ActionResult {
+	warnings := []string{}
+	errors := []string{}
+	if err := a.applyOBSMode(mode); err != nil {
+		errors = append(errors, err.Error())
+	}
+	if options.applyTwitchChanges {
+		if errList := a.applyTwitchModeLocked(mode); len(errList) > 0 {
+			if options.source == "auto" {
+				warnings = append(warnings, errList...)
+			} else {
+				errors = append(errors, errList...)
+			}
+		}
+	}
+	a.cfg.CurrentMode = mode
+	if err := a.store.Save(a.cfg); err != nil {
+		errors = append(errors, err.Error())
+	}
+	if options.recordManualSwitch && a.detector != nil {
+		a.detector.RecordManualOverride(time.Duration(a.cfg.AppDetection.ManualOverrideCooldownSeconds) * time.Second)
+	}
+
+	switch {
+	case len(errors) > 0:
+		if options.source == "auto" {
+			a.lastAction = fmt.Sprintf("Auto-switch to %s mode failed", mode)
+		} else {
+			a.lastAction = fmt.Sprintf("Switched to %s mode with errors", mode)
+		}
+		return a.resultLocked(false, a.lastAction, warnings, errors)
+	case len(warnings) > 0:
+		a.lastAction = fmt.Sprintf("Auto-switched to %s mode with warnings", mode)
+		return a.resultLocked(true, a.lastAction, warnings, nil)
+	default:
+		if options.source == "auto" {
+			a.lastAction = fmt.Sprintf("Auto-switched to %s Mode", mode)
+		} else {
+			a.lastAction = fmt.Sprintf("Switched to %s Mode successfully", mode)
+		}
+		return a.resultLocked(true, a.lastAction, nil, nil)
+	}
+}
+
+func (a *App) applyModeFromDetection(mode config.Mode, applyTwitch bool) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	result := a.applyModeLocked(mode, applyModeOptions{
+		applyTwitchChanges: applyTwitch,
+		source:             "auto",
+	})
+	if len(result.Warnings) > 0 {
+		a.logger.Printf("app detection switch warnings: %s", strings.Join(result.Warnings, "; "))
+	}
+	if len(result.Errors) > 0 {
+		return stderrors.New(strings.Join(result.Errors, "; "))
+	}
+	return nil
+}
+
+func (a *App) currentMode() config.Mode {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cfg.CurrentMode
+}
+
+func (a *App) appDetectionStatusLocked() string {
+	if a.detector == nil {
+		if a.cfg.AppDetection.Enabled {
+			return appdetect.StatusEnabled
+		}
+		return appdetect.StatusDisabled
+	}
+	return a.detector.Snapshot().Status
+}
+
+func validateAppDetectionConfig(cfg config.AppDetectionConfig) []string {
+	if !cfg.Enabled {
+		return nil
+	}
+	errors := []string{}
+	if strings.TrimSpace(cfg.ThreeDProcessName) == "" {
+		errors = append(errors, "3D app process name is required when App Detection is enabled")
+	}
+	if strings.TrimSpace(cfg.PNGProcessName) == "" {
+		errors = append(errors, "PNG app process name is required when App Detection is enabled")
+	}
+	if cfg.IntervalSeconds < 2 {
+		errors = append(errors, "Detection interval must be at least 2 seconds")
+	}
+	return errors
 }
 
 func twitchTokensFromConfig(cfg config.TwitchConfig) secrets.TwitchTokens {

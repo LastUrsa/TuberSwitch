@@ -49,6 +49,7 @@ type persistedConfig struct {
 	StartupMode             StartupMode        `json:"startupMode"`
 	CurrentMode             Mode               `json:"currentMode"`
 	RefreshRewardsOnStartup bool               `json:"refreshRewardsOnStartup"`
+	AppDetection            AppDetectionConfig `json:"appDetection"`
 }
 
 type persistedOBSConfig struct {
@@ -82,5 +83,6 @@ func toPersistedConfig(cfg Config) persistedConfig {
 		StartupMode:             cfg.StartupMode,
 		CurrentMode:             cfg.CurrentMode,
 		RefreshRewardsOnStartup: cfg.RefreshRewardsOnStartup,
+		AppDetection:            cfg.AppDetection,
 	}
 }

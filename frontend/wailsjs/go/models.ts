@@ -43,6 +43,7 @@ export namespace app {
 	    startupMode: string;
 	    currentMode: string;
 	    refreshRewardsOnStartup: boolean;
+	    appDetection: config.AppDetectionConfig;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -58,6 +59,7 @@ export namespace app {
 	        this.startupMode = source["startupMode"];
 	        this.currentMode = source["currentMode"];
 	        this.refreshRewardsOnStartup = source["refreshRewardsOnStartup"];
+	        this.appDetection = this.convertValues(source["appDetection"], config.AppDetectionConfig);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -85,6 +87,8 @@ export namespace app {
 	    obsConnected: boolean;
 	    twitchConnected: boolean;
 	    lastAction: string;
+	    appDetectionStatus: string;
+	    appDetectionEnabled: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Status(source);
@@ -98,6 +102,8 @@ export namespace app {
 	        this.obsConnected = source["obsConnected"];
 	        this.twitchConnected = source["twitchConnected"];
 	        this.lastAction = source["lastAction"];
+	        this.appDetectionStatus = source["appDetectionStatus"];
+	        this.appDetectionEnabled = source["appDetectionEnabled"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -301,6 +307,30 @@ export namespace app {
 
 export namespace config {
 	
+	export class AppDetectionConfig {
+	    enabled: boolean;
+	    threeDProcessName: string;
+	    pngProcessName: string;
+	    intervalSeconds: number;
+	    conflictBehavior: string;
+	    applyTwitchChanges: boolean;
+	    manualOverrideCooldownSeconds: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppDetectionConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.threeDProcessName = source["threeDProcessName"];
+	        this.pngProcessName = source["pngProcessName"];
+	        this.intervalSeconds = source["intervalSeconds"];
+	        this.conflictBehavior = source["conflictBehavior"];
+	        this.applyTwitchChanges = source["applyTwitchChanges"];
+	        this.manualOverrideCooldownSeconds = source["manualOverrideCooldownSeconds"];
+	    }
+	}
 	export class ModeProfile {
 	    id: string;
 	    displayName: string;

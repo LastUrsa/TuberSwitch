@@ -20,6 +20,8 @@ When you switch modes, the app can:
 
 Unchecked rewards are left alone.
 
+TuberSwitch can also optionally detect whether your configured 3D or PNG avatar app is currently running and auto-switch modes to match.
+
 ## Current Feature Set
 
 - Compact desktop UI with a single primary mode switch
@@ -39,6 +41,13 @@ Unchecked rewards are left alone.
   - restore last mode
   - always 3D
   - always PNG
+- Optional App Detection:
+  - disabled by default
+  - configurable 3D and PNG process names
+  - configurable polling interval
+  - conflict handling when both apps are running
+  - optional Twitch updates during auto-switch
+  - manual override cooldown after a manual mode change
 - Twitch Device Code login flow
 - Reward refresh from Twitch
 - Create new rewards under the connected Twitch app
@@ -203,10 +212,73 @@ Use `Create Reward` inside the app if you want a reward that TuberSwitch can rel
 The `General` tab currently includes:
 
 - theme selection
+- App Detection settings
 - app version display
 - update check against GitHub Releases
 
 If an update is available, the app can open the GitHub Releases page directly.
+
+## App Detection
+
+App Detection is optional and disabled by default.
+
+When enabled, TuberSwitch checks for two configured Windows process names:
+
+- a `3D App Process Name` such as `vnyan.exe`
+- a `PNG App Process Name` such as `veadotube-mini.exe`
+
+Default recommendations:
+
+- VNYAN: `vnyan.exe`
+- Veadotube Mini: `veadotube-mini.exe`
+
+Behavior:
+
+- if only the 3D app is running, TuberSwitch switches to 3D mode
+- if only the PNG app is running, TuberSwitch switches to PNG mode
+- if both apps are running, the `Conflict Behavior` setting decides what happens
+- if neither app is running, TuberSwitch observes but does not switch
+
+Conflict Behavior options:
+
+- `Do Nothing`: no auto-switch when both configured apps are open
+- `Prefer 3D`: switch to 3D mode when both are open
+- `Prefer PNG`: switch to PNG mode when both are open
+
+Additional options:
+
+- `Detection Interval`: how often TuberSwitch checks running processes
+  - default: `5` seconds
+  - minimum: `2` seconds
+- `Apply Twitch changes during auto-switch`
+  - enabled by default
+  - if disabled, App Detection only changes OBS visibility
+- `Manual Override Cooldown`
+  - default: `15` seconds
+  - after you manually switch modes, App Detection keeps observing but will not auto-switch until the cooldown expires
+
+In `Settings > General`, TuberSwitch shows the current App Detection status, such as:
+
+- `Disabled`
+- `Enabled`
+- `3D app detected`
+- `PNG app detected`
+- `Both apps detected`
+- `No apps detected`
+
+Auto-switch activity is also written to the app log file at `%APPDATA%\TuberSwitch\tuberswitch.log`.
+
+### Finding the Correct Process Name
+
+On Windows:
+
+1. Launch the avatar app you want to detect.
+2. Open `Task Manager`.
+3. Go to the `Details` tab.
+4. Find the executable name, such as `vnyan.exe`.
+5. Copy that exact executable name into TuberSwitch.
+
+Process matching is case-insensitive. Full paths are not required. App Detection logs only the configured process-name matches, not the full running process list.
 
 ## First-Time Workflow
 
@@ -221,6 +293,13 @@ If an update is available, the app can open the GitHub Releases page directly.
 9. Refresh rewards.
 10. Mark any rewards that should be `3D Only`.
 11. Use the main toggle to switch between modes.
+
+Optional:
+
+12. Open `Settings > General`.
+13. Enable `App Detection`.
+14. Confirm or adjust the process names for your avatar apps.
+15. Save the settings.
 
 Expected behavior:
 
