@@ -496,7 +496,7 @@ function App() {
                     </div>
                     <div className="settings-note">
                       <span>Current version</span>
-                      <strong>{updateInfo?.currentVersion || '0.2.0'}</strong>
+                      <strong>{updateInfo?.currentVersion || '0.3.0'}</strong>
                     </div>
                     <div className="button-row">
                       <button type="button" onClick={saveSettings} disabled={!!busy}>Save</button>

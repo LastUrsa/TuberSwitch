@@ -85,8 +85,8 @@ beforeEach(() => {
   api.GetStatus.mockResolvedValue(structuredClone(mockStatus));
   api.GetTwitchRewards.mockResolvedValue(structuredClone(mockRewards));
   api.CheckForUpdates.mockResolvedValue({
-    currentVersion: '0.2.0',
-    latestVersion: '0.2.0',
+    currentVersion: '0.3.0',
+    latestVersion: '0.3.0',
     updateAvailable: false,
     releaseUrl: 'https://github.com/LastUrsa/TuberSwitch/releases',
     message: "You're running the latest version.",
@@ -126,11 +126,11 @@ describe('App', () => {
 
   it('checks for updates from the General tab and shows the releases action when an update is available', async () => {
     api.CheckForUpdates.mockResolvedValueOnce({
-      currentVersion: '0.2.0',
-      latestVersion: '0.2.0',
+      currentVersion: '0.3.0',
+      latestVersion: '0.3.1',
       updateAvailable: true,
       releaseUrl: 'https://github.com/LastUrsa/TuberSwitch/releases',
-      message: 'Version 0.2.0 is available.',
+      message: 'Version 0.3.1 is available.',
     });
 
     render(<App/>);
@@ -140,8 +140,8 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', {name: 'Check for Updates'}));
 
     await waitFor(() => expect(api.CheckForUpdates).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText('Version 0.2.0 is available.')).toBeInTheDocument();
-    expect(screen.getByText('Latest version: 0.2.0')).toBeInTheDocument();
+    expect(await screen.findByText('Version 0.3.1 is available.')).toBeInTheDocument();
+    expect(screen.getByText('Latest version: 0.3.1')).toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Open GitHub Releases'})).toBeInTheDocument();
   });
 
