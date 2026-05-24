@@ -3,12 +3,14 @@ package app
 import "TuberSwitch/internal/config"
 
 type Status struct {
-	Config           Settings    `json:"config"`
-	CurrentMode      config.Mode `json:"currentMode"`
-	CurrentModeLabel string      `json:"currentModeLabel"`
-	OBSConnected     bool        `json:"obsConnected"`
-	TwitchConnected  bool        `json:"twitchConnected"`
-	LastAction       string      `json:"lastAction"`
+	Config              Settings    `json:"config"`
+	CurrentMode         config.Mode `json:"currentMode"`
+	CurrentModeLabel    string      `json:"currentModeLabel"`
+	OBSConnected        bool        `json:"obsConnected"`
+	TwitchConnected     bool        `json:"twitchConnected"`
+	LastAction          string      `json:"lastAction"`
+	AppDetectionStatus  string      `json:"appDetectionStatus"`
+	AppDetectionEnabled bool        `json:"appDetectionEnabled"`
 }
 
 type ActionResult struct {
@@ -43,14 +45,15 @@ type TwitchReward struct {
 }
 
 type Settings struct {
-	OBS                     OBSSettings           `json:"obs"`
-	Sources                 config.SourcesConfig  `json:"sources"`
-	SceneMappings           []config.SceneMapping `json:"sceneMappings"`
-	Twitch                  TwitchSettings        `json:"twitch"`
-	ModeProfiles            []config.ModeProfile  `json:"modeProfiles"`
-	StartupMode             config.StartupMode    `json:"startupMode"`
-	CurrentMode             config.Mode           `json:"currentMode"`
-	RefreshRewardsOnStartup bool                  `json:"refreshRewardsOnStartup"`
+	OBS                     OBSSettings               `json:"obs"`
+	Sources                 config.SourcesConfig      `json:"sources"`
+	SceneMappings           []config.SceneMapping     `json:"sceneMappings"`
+	Twitch                  TwitchSettings            `json:"twitch"`
+	ModeProfiles            []config.ModeProfile      `json:"modeProfiles"`
+	StartupMode             config.StartupMode        `json:"startupMode"`
+	CurrentMode             config.Mode               `json:"currentMode"`
+	RefreshRewardsOnStartup bool                      `json:"refreshRewardsOnStartup"`
+	AppDetection            config.AppDetectionConfig `json:"appDetection"`
 }
 
 type OBSSettings struct {
@@ -73,9 +76,9 @@ type SettingsInput struct {
 }
 
 type UpdateInfo struct {
-	CurrentVersion string `json:"currentVersion"`
-	LatestVersion  string `json:"latestVersion"`
-	UpdateAvailable bool  `json:"updateAvailable"`
-	ReleaseURL     string `json:"releaseUrl"`
-	Message        string `json:"message"`
+	CurrentVersion  string `json:"currentVersion"`
+	LatestVersion   string `json:"latestVersion"`
+	UpdateAvailable bool   `json:"updateAvailable"`
+	ReleaseURL      string `json:"releaseUrl"`
+	Message         string `json:"message"`
 }

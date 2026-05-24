@@ -37,6 +37,15 @@ type Config = {
   startupMode: 'restore-last' | 'always-3d' | 'always-png';
   currentMode: Mode;
   refreshRewardsOnStartup: boolean;
+  appDetection: {
+    enabled: boolean;
+    threeDProcessName: string;
+    pngProcessName: string;
+    intervalSeconds: number;
+    conflictBehavior: 'do-nothing' | 'prefer-3d' | 'prefer-png';
+    applyTwitchChanges: boolean;
+    manualOverrideCooldownSeconds: number;
+  };
 };
 
 type SceneMapping = {
@@ -62,6 +71,8 @@ type Status = {
   obsConnected: boolean;
   twitchConnected: boolean;
   lastAction: string;
+  appDetectionStatus: string;
+  appDetectionEnabled: boolean;
 };
 
 type SettingsInput = {
@@ -139,6 +150,13 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const intervalID = window.setInterval(() => {
+      void refreshStatus();
+    }, 2000);
+    return () => window.clearInterval(intervalID);
+  }, [settingsOpen]);
+
+  useEffect(() => {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem(themeStorageKey, theme);
   }, [theme]);
@@ -174,6 +192,18 @@ function App() {
     setRewards((await GetTwitchRewards()) as TwitchReward[]);
     setObsPassword('');
     setObsPasswordDirty(false);
+  }
+
+  async function refreshStatus() {
+    try {
+      const next = await GetStatus();
+      setStatus(next as unknown as Status);
+      if (!settingsOpen) {
+        setDraft(structuredClone((next as unknown as Status).config));
+      }
+    } catch {
+      // Keep the current UI state if a background refresh misses once.
+    }
   }
 
   async function run(label: string, action: () => Promise<ActionResult>) {
@@ -397,12 +427,79 @@ function App() {
                           <option value="light">Light</option>
                         </select>
                       </label>
+                      <section className="inline-settings-section">
+                        <h3>App Detection</h3>
+                        <label className="check-row">
+                          <input
+                            type="checkbox"
+                            checked={draft.appDetection.enabled}
+                            onChange={(event) => setDraft({...draft, appDetection: {...draft.appDetection, enabled: event.currentTarget.checked}})}
+                          />
+                          <span>Enable App Detection</span>
+                        </label>
+                        <TextInput
+                          label="3D App Process Name"
+                          info={(
+                            <>
+                              <p>Use the executable name shown in Windows Task Manager, for example <code>vnyan.exe</code>.</p>
+                            </>
+                          )}
+                          value={draft.appDetection.threeDProcessName}
+                          onChange={(value) => setDraft({...draft, appDetection: {...draft.appDetection, threeDProcessName: value}})}
+                        />
+                        <TextInput
+                          label="PNG App Process Name"
+                          info={(
+                            <>
+                              <p>Use the executable name shown in Windows Task Manager, for example <code>veadotube-mini.exe</code>.</p>
+                            </>
+                          )}
+                          value={draft.appDetection.pngProcessName}
+                          onChange={(value) => setDraft({...draft, appDetection: {...draft.appDetection, pngProcessName: value}})}
+                        />
+                        <NumberInput
+                          label="Detection Interval (seconds)"
+                          value={draft.appDetection.intervalSeconds}
+                          min={2}
+                          onChange={(value) => setDraft({...draft, appDetection: {...draft.appDetection, intervalSeconds: value}})}
+                        />
+                        <label>
+                          <FieldLabel text="Conflict Behavior"/>
+                          <select
+                            value={draft.appDetection.conflictBehavior}
+                            onChange={(event) => setDraft({...draft, appDetection: {...draft.appDetection, conflictBehavior: event.currentTarget.value as Config['appDetection']['conflictBehavior']}})}
+                          >
+                            <option value="do-nothing">Do Nothing</option>
+                            <option value="prefer-3d">Prefer 3D</option>
+                            <option value="prefer-png">Prefer PNG</option>
+                          </select>
+                        </label>
+                        <NumberInput
+                          label="Manual Override Cooldown (seconds)"
+                          value={draft.appDetection.manualOverrideCooldownSeconds}
+                          min={0}
+                          onChange={(value) => setDraft({...draft, appDetection: {...draft.appDetection, manualOverrideCooldownSeconds: value}})}
+                        />
+                        <label className="check-row">
+                          <input
+                            type="checkbox"
+                            checked={draft.appDetection.applyTwitchChanges}
+                            onChange={(event) => setDraft({...draft, appDetection: {...draft.appDetection, applyTwitchChanges: event.currentTarget.checked}})}
+                          />
+                          <span>Apply Twitch changes during auto-switch</span>
+                        </label>
+                        <div className="settings-note">
+                          <span>Current detection status</span>
+                          <strong>{status?.appDetectionStatus || 'Disabled'}</strong>
+                        </div>
+                      </section>
                     </div>
                     <div className="settings-note">
                       <span>Current version</span>
                       <strong>{updateInfo?.currentVersion || '0.2.0'}</strong>
                     </div>
                     <div className="button-row">
+                      <button type="button" onClick={saveSettings} disabled={!!busy}>Save</button>
                       <button type="button" onClick={checkForUpdates} disabled={updateBusy}>
                         {updateBusy ? 'Checking for Updates' : 'Check for Updates'}
                       </button>
@@ -656,11 +753,11 @@ function TextInput({label, value, onChange, type = 'text', info, placeholder}: {
   );
 }
 
-function NumberInput({label, value, onChange, info}: {label: string; value: number; onChange: (value: number) => void; info?: ReactNode}) {
+function NumberInput({label, value, onChange, info, min}: {label: string; value: number; onChange: (value: number) => void; info?: ReactNode; min?: number}) {
   return (
     <label>
       <FieldLabel text={label} info={info}/>
-      <input type="number" value={value || 0} onChange={(event) => onChange(Number(event.currentTarget.value))}/>
+      <input type="number" min={min} value={value || 0} onChange={(event) => onChange(Number(event.currentTarget.value))}/>
     </label>
   );
 }

@@ -16,12 +16,27 @@ func TestDefaultAndNormalize(t *testing.T) {
 	if cfg.OBS.Port != 4455 {
 		t.Fatalf("default OBS port = %d", cfg.OBS.Port)
 	}
+	if cfg.AppDetection.ThreeDProcessName != "vnyan.exe" {
+		t.Fatalf("default 3D process = %q", cfg.AppDetection.ThreeDProcessName)
+	}
+	if cfg.AppDetection.PNGProcessName != "veadotube-mini.exe" {
+		t.Fatalf("default PNG process = %q", cfg.AppDetection.PNGProcessName)
+	}
+	if cfg.AppDetection.IntervalSeconds != 5 {
+		t.Fatalf("default detection interval = %d", cfg.AppDetection.IntervalSeconds)
+	}
+	if !cfg.AppDetection.ApplyTwitchChanges {
+		t.Fatalf("default apply twitch changes should be true")
+	}
 
 	cfg.OBS.Host = "localhost"
 	cfg.OBS.Port = 0
 	cfg.StartupMode = ""
 	cfg.CurrentMode = ""
 	cfg.ModeProfiles = nil
+	cfg.AppDetection.IntervalSeconds = 1
+	cfg.AppDetection.ConflictBehavior = "invalid"
+	cfg.AppDetection.ManualOverrideCooldownSeconds = -1
 	cfg.Normalize()
 
 	if cfg.OBS.Host != "127.0.0.1" {
@@ -38,6 +53,15 @@ func TestDefaultAndNormalize(t *testing.T) {
 	}
 	if len(cfg.ModeProfiles) != 2 {
 		t.Fatalf("mode profiles = %d", len(cfg.ModeProfiles))
+	}
+	if cfg.AppDetection.IntervalSeconds != 2 {
+		t.Fatalf("normalized detection interval = %d", cfg.AppDetection.IntervalSeconds)
+	}
+	if cfg.AppDetection.ConflictBehavior != AppDetectionConflictDoNothing {
+		t.Fatalf("normalized conflict behavior = %q", cfg.AppDetection.ConflictBehavior)
+	}
+	if cfg.AppDetection.ManualOverrideCooldownSeconds != 0 {
+		t.Fatalf("normalized manual cooldown = %d", cfg.AppDetection.ManualOverrideCooldownSeconds)
 	}
 }
 
@@ -83,6 +107,9 @@ func TestStoreLoadCreatesDefaultAndSaveRoundTrips(t *testing.T) {
 
 	cfg.Twitch.ChannelName = "Streamer"
 	cfg.RewardMappings = []RewardMapping{{RewardID: "1", RewardName: "Dance", Is3DOnly: true, Manageable: true}}
+	cfg.AppDetection.Enabled = true
+	cfg.AppDetection.ThreeDProcessName = "custom-3d.exe"
+	cfg.AppDetection.ApplyTwitchChanges = false
 	if err := store.Save(cfg); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -96,6 +123,9 @@ func TestStoreLoadCreatesDefaultAndSaveRoundTrips(t *testing.T) {
 	}
 	if len(loaded.RewardMappings) != 1 || !loaded.RewardMappings[0].Manageable {
 		t.Fatalf("reward mappings = %#v", loaded.RewardMappings)
+	}
+	if !loaded.AppDetection.Enabled || loaded.AppDetection.ThreeDProcessName != "custom-3d.exe" || loaded.AppDetection.ApplyTwitchChanges {
+		t.Fatalf("app detection = %#v", loaded.AppDetection)
 	}
 }
 

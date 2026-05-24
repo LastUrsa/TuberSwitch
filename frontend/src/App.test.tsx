@@ -20,12 +20,23 @@ const mockStatus = {
     startupMode: 'restore-last',
     currentMode: 'PNG',
     refreshRewardsOnStartup: false,
+    appDetection: {
+      enabled: false,
+      threeDProcessName: 'vnyan.exe',
+      pngProcessName: 'veadotube-mini.exe',
+      intervalSeconds: 5,
+      conflictBehavior: 'do-nothing',
+      applyTwitchChanges: true,
+      manualOverrideCooldownSeconds: 15,
+    },
   },
   currentMode: 'PNG',
   currentModeLabel: 'PNG VTuber Mode',
   obsConnected: true,
   twitchConnected: true,
   lastAction: 'Ready',
+  appDetectionStatus: 'Disabled',
+  appDetectionEnabled: false,
 };
 
 const mockRewards = [
@@ -132,6 +143,55 @@ describe('App', () => {
     expect(await screen.findByText('Version 0.2.0 is available.')).toBeInTheDocument();
     expect(screen.getByText('Latest version: 0.2.0')).toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Open GitHub Releases'})).toBeInTheDocument();
+  });
+
+  it('saves app detection settings from the General tab', async () => {
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getByLabelText('Enable App Detection'));
+    await userEvent.clear(screen.getByLabelText(/3D App Process Name/i));
+    await userEvent.type(screen.getByLabelText(/3D App Process Name/i), 'vseeface.exe');
+    await userEvent.clear(screen.getByLabelText(/PNG App Process Name/i));
+    await userEvent.type(screen.getByLabelText(/PNG App Process Name/i), 'veadotube-mini.exe');
+    await userEvent.clear(screen.getByLabelText(/Detection Interval \(seconds\)/i));
+    await userEvent.type(screen.getByLabelText(/Detection Interval \(seconds\)/i), '7');
+    await userEvent.selectOptions(screen.getByLabelText('Conflict Behavior'), 'prefer-3d');
+    await userEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+    await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
+    const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
+    expect(savedConfig.config.appDetection.enabled).toBe(true);
+    expect(savedConfig.config.appDetection.threeDProcessName).toBe('vseeface.exe');
+    expect(savedConfig.config.appDetection.intervalSeconds).toBe(7);
+    expect(savedConfig.config.appDetection.conflictBehavior).toBe('prefer-3d');
+  });
+
+  it('keeps an in-progress settings draft when the background status refresh runs', async () => {
+    const user = userEvent.setup();
+
+    api.GetStatus.mockResolvedValueOnce(structuredClone(mockStatus));
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await user.click(screen.getByRole('button', {name: 'Settings'}));
+    await user.click(screen.getByRole('tab', {name: 'OBS Settings'}));
+    const hostInput = screen.getByLabelText(/OBS WebSocket Host/i);
+    await user.clear(hostInput);
+    await user.type(hostInput, 'draft-host');
+
+    api.GetStatus.mockResolvedValueOnce({
+      ...structuredClone(mockStatus),
+      config: {
+        ...structuredClone(mockStatus).config,
+        obs: {...structuredClone(mockStatus).config.obs, host: 'refreshed-host'},
+      },
+    });
+
+    await new Promise((resolve) => window.setTimeout(resolve, 2100));
+    await waitFor(() => expect(api.GetStatus).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText(/OBS WebSocket Host/i)).toHaveValue('draft-host');
   });
 
   it('shows an error when the update check fails', async () => {

@@ -15,16 +15,25 @@ const (
 	StartupAlwaysPNG   StartupMode = "always-png"
 )
 
+type AppDetectionConflictBehavior string
+
+const (
+	AppDetectionConflictDoNothing AppDetectionConflictBehavior = "do-nothing"
+	AppDetectionConflictPrefer3D  AppDetectionConflictBehavior = "prefer-3d"
+	AppDetectionConflictPreferPNG AppDetectionConflictBehavior = "prefer-png"
+)
+
 type Config struct {
-	OBS                     OBSConfig       `json:"obs"`
-	Sources                 SourcesConfig   `json:"sources"`
-	SceneMappings           []SceneMapping  `json:"sceneMappings"`
-	Twitch                  TwitchConfig    `json:"twitch"`
-	RewardMappings          []RewardMapping `json:"rewardMappings"`
-	ModeProfiles            []ModeProfile   `json:"modeProfiles"`
-	StartupMode             StartupMode     `json:"startupMode"`
-	CurrentMode             Mode            `json:"currentMode"`
-	RefreshRewardsOnStartup bool            `json:"refreshRewardsOnStartup"`
+	OBS                     OBSConfig          `json:"obs"`
+	Sources                 SourcesConfig      `json:"sources"`
+	SceneMappings           []SceneMapping     `json:"sceneMappings"`
+	Twitch                  TwitchConfig       `json:"twitch"`
+	RewardMappings          []RewardMapping    `json:"rewardMappings"`
+	ModeProfiles            []ModeProfile      `json:"modeProfiles"`
+	StartupMode             StartupMode        `json:"startupMode"`
+	CurrentMode             Mode               `json:"currentMode"`
+	RefreshRewardsOnStartup bool               `json:"refreshRewardsOnStartup"`
+	AppDetection            AppDetectionConfig `json:"appDetection"`
 }
 
 type OBSConfig struct {
@@ -75,6 +84,16 @@ type ModeProfile struct {
 	Enable3DRewards bool   `json:"enable3DRewards"`
 }
 
+type AppDetectionConfig struct {
+	Enabled                       bool                         `json:"enabled"`
+	ThreeDProcessName             string                       `json:"threeDProcessName"`
+	PNGProcessName                string                       `json:"pngProcessName"`
+	IntervalSeconds               int                          `json:"intervalSeconds"`
+	ConflictBehavior              AppDetectionConflictBehavior `json:"conflictBehavior"`
+	ApplyTwitchChanges            bool                         `json:"applyTwitchChanges"`
+	ManualOverrideCooldownSeconds int                          `json:"manualOverrideCooldownSeconds"`
+}
+
 func Default() Config {
 	return Config{
 		OBS: OBSConfig{
@@ -87,6 +106,7 @@ func Default() Config {
 		StartupMode:             StartupRestoreLast,
 		CurrentMode:             ModePNG,
 		RefreshRewardsOnStartup: false,
+		AppDetection:            DefaultAppDetection(),
 	}
 }
 
@@ -137,6 +157,11 @@ func (c *Config) Normalize() {
 			},
 		}
 	}
+	if c.AppDetection == (AppDetectionConfig{}) {
+		c.AppDetection = DefaultAppDetection()
+	} else {
+		c.AppDetection.Normalize()
+	}
 }
 
 func (c Config) Profile(mode Mode) (ModeProfile, bool) {
@@ -146,4 +171,40 @@ func (c Config) Profile(mode Mode) (ModeProfile, bool) {
 		}
 	}
 	return ModeProfile{}, false
+}
+
+func DefaultAppDetection() AppDetectionConfig {
+	return AppDetectionConfig{
+		Enabled:                       false,
+		ThreeDProcessName:             "vnyan.exe",
+		PNGProcessName:                "veadotube-mini.exe",
+		IntervalSeconds:               5,
+		ConflictBehavior:              AppDetectionConflictDoNothing,
+		ApplyTwitchChanges:            true,
+		ManualOverrideCooldownSeconds: 15,
+	}
+}
+
+func (c *AppDetectionConfig) Normalize() {
+	defaults := DefaultAppDetection()
+	if c.IntervalSeconds == 0 {
+		c.IntervalSeconds = defaults.IntervalSeconds
+	}
+	if c.IntervalSeconds < 2 {
+		c.IntervalSeconds = 2
+	}
+	if c.ConflictBehavior == "" {
+		c.ConflictBehavior = defaults.ConflictBehavior
+	}
+	switch c.ConflictBehavior {
+	case AppDetectionConflictDoNothing, AppDetectionConflictPrefer3D, AppDetectionConflictPreferPNG:
+	default:
+		c.ConflictBehavior = defaults.ConflictBehavior
+	}
+	if c.ManualOverrideCooldownSeconds == 0 {
+		c.ManualOverrideCooldownSeconds = defaults.ManualOverrideCooldownSeconds
+	}
+	if c.ManualOverrideCooldownSeconds < 0 {
+		c.ManualOverrideCooldownSeconds = 0
+	}
 }

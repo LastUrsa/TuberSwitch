@@ -10,8 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	appdto "TuberSwitch/internal/app"
+	"TuberSwitch/internal/appdetect"
 	"TuberSwitch/internal/config"
 	"TuberSwitch/internal/obs"
 	"TuberSwitch/internal/secrets"
@@ -275,6 +277,41 @@ func TestApplyModeReportsTwitchFailureAndPersistsMode(t *testing.T) {
 	}
 }
 
+func TestApplyModeFromDetectionCanSkipTwitchChanges(t *testing.T) {
+	fakeOBS := &fakeOBSService{
+		sources: map[string][]obs.Source{
+			"Main": {{Name: "VTuber", SceneItemID: 10}},
+		},
+	}
+	fakeTwitch := &fakeTwitchService{}
+	app := &App{
+		obs:         fakeOBS,
+		twitch:      fakeTwitch,
+		store:       config.NewStore(filepath.Join(t.TempDir(), "config.json")),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
+		cfg: config.Config{
+			OBS:          config.OBSConfig{Host: "127.0.0.1", Port: 4455},
+			Twitch:       config.TwitchConfig{ClientID: "client", AccessToken: "token"},
+			ModeProfiles: config.DefaultProfiles(),
+			CurrentMode:  config.ModePNG,
+			SceneMappings: []config.SceneMapping{
+				{Scene: "Main", Enabled: true, VTuberSource: "VTuber"},
+			},
+			RewardMappings: []config.RewardMapping{
+				{RewardID: "ok", RewardName: "OK", Is3DOnly: true, Manageable: true},
+			},
+		},
+	}
+
+	if err := app.applyModeFromDetection(config.Mode3D, false); err != nil {
+		t.Fatalf("applyModeFromDetection: %v", err)
+	}
+	if len(fakeTwitch.rewardCalls) != 0 {
+		t.Fatalf("unexpected twitch calls: %#v", fakeTwitch.rewardCalls)
+	}
+}
+
 func TestApplyModeReportsOBSFailureAndPersistsMode(t *testing.T) {
 	fakeOBS := &fakeOBSService{
 		sources: map[string][]obs.Source{
@@ -309,8 +346,9 @@ func TestApplyModeReportsOBSFailureAndPersistsMode(t *testing.T) {
 
 func TestStatusLockedRedactsSecrets(t *testing.T) {
 	app := &App{
-		obs:    &fakeOBSService{},
-		logger: log.Default(),
+		obs:      &fakeOBSService{},
+		logger:   log.Default(),
+		detector: appDetectorStub(appdetect.StatusPNGDetected),
 		cfg: config.Config{
 			OBS: config.OBSConfig{Host: "127.0.0.1", Port: 4455, Password: "obs-secret"},
 			Twitch: config.TwitchConfig{
@@ -332,6 +370,9 @@ func TestStatusLockedRedactsSecrets(t *testing.T) {
 	}
 	if status.Config.Twitch.ChannelName != "Streamer" {
 		t.Fatalf("unexpected channel name: %#v", status.Config.Twitch)
+	}
+	if status.AppDetectionStatus != appdetect.StatusPNGDetected {
+		t.Fatalf("unexpected app detection status: %#v", status)
 	}
 }
 
@@ -495,6 +536,68 @@ func TestSaveConfigReturnsErrorWhenSecureOBSSaveFails(t *testing.T) {
 	}
 }
 
+func TestSaveConfigRejectsBlankAppDetectionProcessNames(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	app := &App{
+		store:       config.NewStore(path),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
+		obs:         &fakeOBSService{},
+		cfg: config.Config{
+			OBS:          config.OBSConfig{Host: "127.0.0.1", Port: 4455},
+			ModeProfiles: config.DefaultProfiles(),
+			CurrentMode:  config.ModePNG,
+			AppDetection: config.DefaultAppDetection(),
+		},
+	}
+
+	settings := app.settingsLocked()
+	settings.AppDetection.Enabled = true
+	settings.AppDetection.ThreeDProcessName = ""
+	settings.AppDetection.PNGProcessName = ""
+
+	result := app.SaveConfig(appdto.SettingsInput{Config: settings})
+	if result.OK {
+		t.Fatalf("expected validation failure")
+	}
+	if len(result.Errors) != 2 {
+		t.Fatalf("unexpected validation errors: %#v", result.Errors)
+	}
+}
+
+func TestSaveConfigRestartsDetectorWithUpdatedSettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	detector := &appDetectorRecorder{}
+	app := &App{
+		store:       config.NewStore(path),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
+		obs:         &fakeOBSService{},
+		detector:    detector,
+		cfg: config.Config{
+			OBS:          config.OBSConfig{Host: "127.0.0.1", Port: 4455},
+			ModeProfiles: config.DefaultProfiles(),
+			CurrentMode:  config.ModePNG,
+			AppDetection: config.DefaultAppDetection(),
+		},
+	}
+
+	settings := app.settingsLocked()
+	settings.AppDetection.Enabled = true
+	settings.AppDetection.ThreeDProcessName = "custom.exe"
+
+	result := app.SaveConfig(appdto.SettingsInput{Config: settings})
+	if !result.OK {
+		t.Fatalf("expected success, got %#v", result)
+	}
+	if detector.startCalls != 1 {
+		t.Fatalf("expected detector restart, got %d", detector.startCalls)
+	}
+	if detector.lastConfig.ThreeDProcessName != "custom.exe" || !detector.lastConfig.Enabled {
+		t.Fatalf("unexpected detector config: %#v", detector.lastConfig)
+	}
+}
+
 func TestRefreshRewardsReturnsErrorWhenSecureTokenSaveFails(t *testing.T) {
 	app := &App{
 		store:       config.NewStore(filepath.Join(t.TempDir(), "config.json")),
@@ -519,6 +622,31 @@ func TestRefreshRewardsReturnsErrorWhenSecureTokenSaveFails(t *testing.T) {
 type fakeError string
 
 func (e fakeError) Error() string { return string(e) }
+
+type appDetectorStub string
+
+func (s appDetectorStub) Start(config.AppDetectionConfig) {}
+func (s appDetectorStub) Stop()                           {}
+func (s appDetectorStub) RecordManualOverride(time.Duration) {
+}
+func (s appDetectorStub) Snapshot() appdetect.Snapshot {
+	return appdetect.Snapshot{Status: string(s)}
+}
+
+type appDetectorRecorder struct {
+	startCalls int
+	lastConfig config.AppDetectionConfig
+}
+
+func (r *appDetectorRecorder) Start(cfg config.AppDetectionConfig) {
+	r.startCalls++
+	r.lastConfig = cfg
+}
+func (r *appDetectorRecorder) Stop()                              {}
+func (r *appDetectorRecorder) RecordManualOverride(time.Duration) {}
+func (r *appDetectorRecorder) Snapshot() appdetect.Snapshot {
+	return appdetect.Snapshot{Status: appdetect.StatusDisabled}
+}
 
 type fakeOBSService struct {
 	connected        bool
