@@ -303,7 +303,7 @@ func (a *App) BrowseExecutable() (string, error) {
 		a.logger.Printf("app detection executable browse failed: %v", err)
 		return "", err
 	}
-	filename := strings.TrimSpace(filepath.Base(selectedPath))
+	filename := executableFilename(selectedPath)
 	if filename == "." {
 		filename = ""
 	}
@@ -311,6 +311,18 @@ func (a *App) BrowseExecutable() (string, error) {
 		a.logger.Printf("app detection browse executable selected filename=%s", filename)
 	}
 	return filename, nil
+}
+
+func executableFilename(selectedPath string) string {
+	selectedPath = strings.TrimSpace(selectedPath)
+	if selectedPath == "" {
+		return ""
+	}
+	lastSeparator := strings.LastIndexAny(selectedPath, `/\`)
+	if lastSeparator >= 0 && lastSeparator < len(selectedPath)-1 {
+		return strings.TrimSpace(selectedPath[lastSeparator+1:])
+	}
+	return strings.TrimSpace(filepath.Base(selectedPath))
 }
 
 func (a *App) TestOBSConnection() appdto.ActionResult {
