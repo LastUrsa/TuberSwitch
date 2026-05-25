@@ -101,18 +101,21 @@ build\bin\TuberSwitch.exe
 
 ## Testing
 
+Before pushing, run the same checks CI runs:
+
 ```powershell
-go test ./...
-cd frontend
-npm test -- --run
-npm run build
+.\scripts\ci-check.ps1
 ```
 
-Frontend coverage:
+Equivalent manual commands:
 
 ```powershell
 cd frontend
+npm ci
 npm run test:coverage
+npm run build
+cd ..
+go test ./... -cover
 ```
 
 ## Local Files
