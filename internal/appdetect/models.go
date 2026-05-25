@@ -1,6 +1,7 @@
 package appdetect
 
 import (
+	"sort"
 	"strings"
 
 	"TuberSwitch/internal/config"
@@ -26,8 +27,16 @@ type Snapshot struct {
 	ConflictResolved bool
 }
 
+type ProcessSummary struct {
+	ProcessName      string
+	PID              int
+	ExecutablePath   string
+	IsSystemProcess  bool
+	HasVisibleWindow bool
+}
+
 type ProcessProvider interface {
-	ListProcessNames() ([]string, error)
+	ListProcesses() ([]ProcessSummary, error)
 }
 
 type Evaluation struct {
@@ -57,6 +66,25 @@ func Evaluate(cfg config.AppDetectionConfig, names []string) Evaluation {
 	default:
 		return Evaluation{Status: StatusNoAppsDetected}
 	}
+}
+
+func ProcessNames(processes []ProcessSummary) []string {
+	names := make([]string, 0, len(processes))
+	for _, process := range processes {
+		names = append(names, process.ProcessName)
+	}
+	return names
+}
+
+func sortProcessSummaries(processes []ProcessSummary) {
+	sort.Slice(processes, func(i, j int) bool {
+		left := strings.ToLower(processes[i].ProcessName)
+		right := strings.ToLower(processes[j].ProcessName)
+		if left == right {
+			return processes[i].PID < processes[j].PID
+		}
+		return left < right
+	})
 }
 
 func containsProcessName(names []string, target string) bool {

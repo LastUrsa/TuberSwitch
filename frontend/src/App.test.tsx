@@ -22,8 +22,8 @@ const mockStatus = {
     refreshRewardsOnStartup: false,
     appDetection: {
       enabled: false,
-      threeDProcessName: 'vnyan.exe',
-      pngProcessName: 'veadotube-mini.exe',
+      threeDProcessName: '',
+      pngProcessName: '',
       intervalSeconds: 5,
       conflictBehavior: 'do-nothing',
       applyTwitchChanges: true,
@@ -62,11 +62,13 @@ const actionError = (message: string, status = mockStatus) => ({
 
 const api = vi.hoisted(() => ({
   ApplyMode: vi.fn(),
+  BrowseExecutable: vi.fn(),
   CheckForUpdates: vi.fn(),
   CreateTwitchReward: vi.fn(),
   GetOBSInventory: vi.fn(),
   GetStatus: vi.fn(),
   GetTwitchRewards: vi.fn(),
+  ListRunningProcesses: vi.fn(),
   RefreshTwitchRewards: vi.fn(),
   SaveConfig: vi.fn(),
   SetReward3DOnly: vi.fn(),
@@ -79,6 +81,8 @@ vi.mock('../wailsjs/go/main/App', () => api);
 beforeEach(() => {
   vi.clearAllMocks();
   (window as typeof window & {runtime: Record<string, unknown>}).runtime = {
+    LogError: vi.fn(),
+    LogInfo: vi.fn(),
     WindowSetMinSize: vi.fn(),
     WindowSetSize: vi.fn(),
   };
@@ -100,6 +104,13 @@ beforeEach(() => {
     },
   });
   api.SaveConfig.mockImplementation(async (input) => actionResult({...mockStatus, config: input.config}));
+  api.ListRunningProcesses.mockResolvedValue([
+    {processName: 'AvatarApp.exe', pid: 1234},
+    {processName: 'chrome.exe', pid: 999},
+    {processName: 'Bitwarden.exe', pid: 5000},
+    {processName: 'BackgroundAvatarHelper.exe', pid: 6000},
+  ]);
+  api.BrowseExecutable.mockResolvedValue('AvatarApp.exe');
   api.SetReward3DOnly.mockResolvedValue(actionResult());
   api.CreateTwitchReward.mockResolvedValue(actionResult());
   api.ApplyMode.mockResolvedValue(actionResult({...mockStatus, currentMode: '3D', currentModeLabel: '3D VTuber Mode'}));
@@ -151,10 +162,8 @@ describe('App', () => {
 
     await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
     await userEvent.click(screen.getByLabelText('Enable App Detection'));
-    await userEvent.clear(screen.getByLabelText(/3D App Process Name/i));
-    await userEvent.type(screen.getByLabelText(/3D App Process Name/i), 'vseeface.exe');
-    await userEvent.clear(screen.getByLabelText(/PNG App Process Name/i));
-    await userEvent.type(screen.getByLabelText(/PNG App Process Name/i), 'veadotube-mini.exe');
+    await userEvent.type(screen.getByLabelText(/3D Mode Process/i), 'vseeface.exe');
+    await userEvent.type(screen.getByLabelText(/PNG Mode Process/i), 'pngtuber.exe');
     await userEvent.clear(screen.getByLabelText(/Detection Interval \(seconds\)/i));
     await userEvent.type(screen.getByLabelText(/Detection Interval \(seconds\)/i), '7');
     await userEvent.selectOptions(screen.getByLabelText('Conflict Behavior'), 'prefer-3d');
@@ -164,8 +173,78 @@ describe('App', () => {
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
     expect(savedConfig.config.appDetection.enabled).toBe(true);
     expect(savedConfig.config.appDetection.threeDProcessName).toBe('vseeface.exe');
+    expect(savedConfig.config.appDetection.pngProcessName).toBe('pngtuber.exe');
     expect(savedConfig.config.appDetection.intervalSeconds).toBe(7);
     expect(savedConfig.config.appDetection.conflictBehavior).toBe('prefer-3d');
+  });
+
+  it('selects a running process for the 3D field and stores only the executable name', async () => {
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getAllByRole('button', {name: 'Select Running App'})[0]);
+    expect(await screen.findByText('Select 3D Mode Process')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Search'), 'avatar');
+    const processSelect = screen.getByLabelText('Running App');
+    expect(screen.getAllByRole('option', {name: /AvatarApp\.exe/i})).toHaveLength(1);
+    await userEvent.selectOptions(processSelect, 'AvatarApp.exe:1234');
+    await userEvent.click(screen.getByRole('button', {name: /^Select$/}));
+
+    expect(screen.getByLabelText(/3D Mode Process/i)).toHaveValue('AvatarApp.exe');
+  });
+
+  it('browses for an executable and stores only the filename for the PNG field', async () => {
+    api.BrowseExecutable.mockResolvedValueOnce('C:\\Program Files\\Example Avatar App\\AvatarApp.exe');
+
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getAllByRole('button', {name: 'Browse Executable'})[1]);
+
+    await waitFor(() => expect(api.BrowseExecutable).toHaveBeenCalledTimes(1));
+    expect(screen.getByLabelText(/PNG Mode Process/i)).toHaveValue('AvatarApp.exe');
+  });
+
+  it('can show common desktop apps when that filter is disabled', async () => {
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getAllByRole('button', {name: 'Select Running App'})[0]);
+    await screen.findByText('Select 3D Mode Process');
+    await userEvent.click(screen.getByLabelText('Likely avatar apps only'));
+    await userEvent.click(screen.getByLabelText('Hide common desktop apps'));
+
+    expect(await screen.findByRole('option', {name: /chrome\.exe \(PID 999\)/i})).toBeInTheDocument();
+  });
+
+  it('can show helper and utility apps when that filter is disabled', async () => {
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getAllByRole('button', {name: 'Select Running App'})[0]);
+    await screen.findByText('Select 3D Mode Process');
+    await userEvent.click(screen.getByLabelText('Likely avatar apps only'));
+    await userEvent.click(screen.getByLabelText('Hide helpers and utilities'));
+
+    expect(await screen.findByRole('option', {name: /bitwarden\.exe \(PID 5000\)/i})).toBeInTheDocument();
+  });
+
+  it('can show background processes when visible-window filtering is disabled', async () => {
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getAllByRole('button', {name: 'Select Running App'})[0]);
+    await screen.findByText('Select 3D Mode Process');
+    await userEvent.click(screen.getByLabelText('Likely avatar apps only'));
+    await userEvent.click(screen.getByLabelText('Show only visible app windows'));
+    await userEvent.type(screen.getByLabelText('Search'), 'backgroundavatar');
+
+    expect(await screen.findByRole('option', {name: /backgroundavatarhelper\.exe \(PID 6000\)/i})).toBeInTheDocument();
   });
 
   it('keeps an in-progress settings draft when the background status refresh runs', async () => {

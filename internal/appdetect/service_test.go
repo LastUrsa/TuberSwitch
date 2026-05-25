@@ -12,6 +12,8 @@ import (
 
 func TestEvaluatePrefersSingleDetectedApp(t *testing.T) {
 	cfg := config.DefaultAppDetection()
+	cfg.ThreeDProcessName = "vnyan.exe"
+	cfg.PNGProcessName = "veadotube-mini.exe"
 
 	result := Evaluate(cfg, []string{"VNYAN.EXE"})
 	if result.Status != StatusThreeDDetected || result.DesiredMode != config.Mode3D || !result.ShouldSwitch {
@@ -26,6 +28,8 @@ func TestEvaluatePrefersSingleDetectedApp(t *testing.T) {
 
 func TestEvaluateHandlesConflictBehavior(t *testing.T) {
 	cfg := config.DefaultAppDetection()
+	cfg.ThreeDProcessName = "vnyan.exe"
+	cfg.PNGProcessName = "veadotube-mini.exe"
 	names := []string{"vnyan.exe", "veadotube-mini.exe"}
 
 	result := Evaluate(cfg, names)
@@ -62,6 +66,7 @@ func TestServiceRespectsManualCooldown(t *testing.T) {
 	service.now = func() time.Time { return now }
 
 	cfg := config.DefaultAppDetection()
+	cfg.ThreeDProcessName = "vnyan.exe"
 	service.RecordManualOverride(15 * time.Second)
 	service.tick(cfg)
 	if switches != 0 {
@@ -85,7 +90,9 @@ func TestServiceDoesNotApplyWhenDesiredModeAlreadyActive(t *testing.T) {
 		return config.Mode3D
 	})
 
-	service.tick(config.DefaultAppDetection())
+	cfg := config.DefaultAppDetection()
+	cfg.ThreeDProcessName = "vnyan.exe"
+	service.tick(cfg)
 	if switches != 0 {
 		t.Fatalf("unexpected switch when mode already active")
 	}
@@ -102,6 +109,7 @@ func TestServiceLogsOnlyMatchedProcessNamesOnStateChange(t *testing.T) {
 	})
 
 	cfg := config.DefaultAppDetection()
+	cfg.ThreeDProcessName = "vnyan.exe"
 	service.tick(cfg)
 	service.tick(cfg)
 
@@ -122,6 +130,10 @@ type stubProcessProvider struct {
 	err   error
 }
 
-func (s *stubProcessProvider) ListProcessNames() ([]string, error) {
-	return append([]string(nil), s.names...), s.err
+func (s *stubProcessProvider) ListProcesses() ([]ProcessSummary, error) {
+	processes := make([]ProcessSummary, 0, len(s.names))
+	for index, name := range s.names {
+		processes = append(processes, ProcessSummary{ProcessName: name, PID: index + 1})
+	}
+	return processes, s.err
 }

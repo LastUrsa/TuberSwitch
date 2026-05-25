@@ -13,6 +13,12 @@ const (
 	twitchTokensUser = "twitch-tokens"
 )
 
+var (
+	keyringGet    = keyring.Get
+	keyringSet    = keyring.Set
+	keyringDelete = keyring.Delete
+)
+
 type Store struct{}
 
 type TwitchTokens struct {
@@ -26,7 +32,7 @@ func NewStore() *Store {
 }
 
 func (s *Store) LoadOBSPassword() (string, error) {
-	value, err := keyring.Get(serviceName, obsPasswordUser)
+	value, err := keyringGet(serviceName, obsPasswordUser)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return "", nil
 	}
@@ -37,11 +43,11 @@ func (s *Store) SaveOBSPassword(password string) error {
 	if password == "" {
 		return s.DeleteOBSPassword()
 	}
-	return keyring.Set(serviceName, obsPasswordUser, password)
+	return keyringSet(serviceName, obsPasswordUser, password)
 }
 
 func (s *Store) DeleteOBSPassword() error {
-	err := keyring.Delete(serviceName, obsPasswordUser)
+	err := keyringDelete(serviceName, obsPasswordUser)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return nil
 	}
@@ -49,7 +55,7 @@ func (s *Store) DeleteOBSPassword() error {
 }
 
 func (s *Store) LoadTwitchTokens() (TwitchTokens, error) {
-	value, err := keyring.Get(serviceName, twitchTokensUser)
+	value, err := keyringGet(serviceName, twitchTokensUser)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return TwitchTokens{}, nil
 	}
@@ -71,11 +77,11 @@ func (s *Store) SaveTwitchTokens(tokens TwitchTokens) error {
 	if err != nil {
 		return err
 	}
-	return keyring.Set(serviceName, twitchTokensUser, string(data))
+	return keyringSet(serviceName, twitchTokensUser, string(data))
 }
 
 func (s *Store) DeleteTwitchTokens() error {
-	err := keyring.Delete(serviceName, twitchTokensUser)
+	err := keyringDelete(serviceName, twitchTokensUser)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return nil
 	}

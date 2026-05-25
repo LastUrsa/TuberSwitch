@@ -18,6 +18,8 @@ import (
 	"TuberSwitch/internal/obs"
 	"TuberSwitch/internal/secrets"
 	"TuberSwitch/internal/twitch"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func TestMergeSceneMappingsPreservesExistingSelections(t *testing.T) {
@@ -536,7 +538,7 @@ func TestSaveConfigReturnsErrorWhenSecureOBSSaveFails(t *testing.T) {
 	}
 }
 
-func TestSaveConfigRejectsBlankAppDetectionProcessNames(t *testing.T) {
+func TestSaveConfigRejectsMissingAppDetectionProcessNames(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	app := &App{
 		store:       config.NewStore(path),
@@ -560,8 +562,122 @@ func TestSaveConfigRejectsBlankAppDetectionProcessNames(t *testing.T) {
 	if result.OK {
 		t.Fatalf("expected validation failure")
 	}
-	if len(result.Errors) != 2 {
+	if len(result.Errors) != 1 {
 		t.Fatalf("unexpected validation errors: %#v", result.Errors)
+	}
+}
+
+func TestSaveConfigAllowsSingleAppDetectionProcessName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	app := &App{
+		store:       config.NewStore(path),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
+		obs:         &fakeOBSService{},
+		cfg: config.Config{
+			OBS:          config.OBSConfig{Host: "127.0.0.1", Port: 4455},
+			ModeProfiles: config.DefaultProfiles(),
+			CurrentMode:  config.ModePNG,
+			AppDetection: config.DefaultAppDetection(),
+		},
+	}
+
+	settings := app.settingsLocked()
+	settings.AppDetection.Enabled = true
+	settings.AppDetection.ThreeDProcessName = "avatar-app.exe"
+	settings.AppDetection.PNGProcessName = ""
+
+	result := app.SaveConfig(appdto.SettingsInput{Config: settings})
+	if !result.OK {
+		t.Fatalf("expected success, got %#v", result)
+	}
+}
+
+func TestListRunningProcessesReturnsProcessSummaries(t *testing.T) {
+	app := &App{
+		logger:    log.Default(),
+		processes: &fakeProcessProvider{processes: []appdetect.ProcessSummary{{ProcessName: "AvatarApp.exe", PID: 1234, ExecutablePath: `C:\Apps\AvatarApp.exe`, IsSystemProcess: false, HasVisibleWindow: true}}},
+	}
+
+	processes, err := app.ListRunningProcesses(appdto.ProcessListOptions{
+		ShowOnlyVisibleApps: true,
+		HideSystemProcesses: true,
+	})
+	if err != nil {
+		t.Fatalf("ListRunningProcesses: %v", err)
+	}
+	if len(processes) != 1 {
+		t.Fatalf("processes = %#v", processes)
+	}
+	if processes[0].ProcessName != "AvatarApp.exe" || processes[0].PID != 1234 {
+		t.Fatalf("unexpected process summary: %#v", processes[0])
+	}
+}
+
+func TestListRunningProcessesExcludesCurrentProcess(t *testing.T) {
+	currentPID := os.Getpid()
+	app := &App{
+		logger: log.Default(),
+		processes: &fakeProcessProvider{processes: []appdetect.ProcessSummary{
+			{ProcessName: "TuberSwitch.exe", PID: currentPID, HasVisibleWindow: true},
+			{ProcessName: "AvatarApp.exe", PID: 1234, HasVisibleWindow: true},
+		}},
+	}
+
+	processes, err := app.ListRunningProcesses(appdto.ProcessListOptions{
+		ShowOnlyVisibleApps: true,
+	})
+	if err != nil {
+		t.Fatalf("ListRunningProcesses: %v", err)
+	}
+	if len(processes) != 1 {
+		t.Fatalf("processes = %#v", processes)
+	}
+	if processes[0].ProcessName != "AvatarApp.exe" {
+		t.Fatalf("unexpected remaining process: %#v", processes[0])
+	}
+}
+
+func TestListRunningProcessesReturnsEnumerationError(t *testing.T) {
+	app := &App{
+		logger:    log.Default(),
+		processes: &fakeProcessProvider{err: fakeError("enumeration failed")},
+	}
+
+	_, err := app.ListRunningProcesses(appdto.ProcessListOptions{})
+	if err == nil || err.Error() != "enumeration failed" {
+		t.Fatalf("expected enumeration error, got %v", err)
+	}
+}
+
+func TestBrowseExecutableReturnsFilenameOnly(t *testing.T) {
+	app := &App{
+		logger: log.Default(),
+		openFileDialog: func(context.Context, runtime.OpenDialogOptions) (string, error) {
+			return `C:\Program Files\Example Avatar App\AvatarApp.exe`, nil
+		},
+	}
+
+	filename, err := app.BrowseExecutable()
+	if err != nil {
+		t.Fatalf("BrowseExecutable: %v", err)
+	}
+	if filename != "AvatarApp.exe" {
+		t.Fatalf("filename = %q", filename)
+	}
+}
+
+func TestBrowseExecutableReturnsDialogError(t *testing.T) {
+	app := &App{
+		logger: log.Default(),
+		openFileDialog: func(context.Context, runtime.OpenDialogOptions) (string, error) {
+			return "", fakeError("dialog failed")
+		},
+	}
+
+	_, err := app.BrowseExecutable()
+	if err == nil || err.Error() != "dialog failed" {
+		t.Fatalf("expected dialog error, got %v", err)
 	}
 }
 
@@ -738,6 +854,15 @@ type fakeSecretStore struct {
 	saveOBSPasswordErr  error
 	loadTwitchTokensErr error
 	saveTwitchTokensErr error
+}
+
+type fakeProcessProvider struct {
+	processes []appdetect.ProcessSummary
+	err       error
+}
+
+func (f *fakeProcessProvider) ListProcesses() ([]appdetect.ProcessSummary, error) {
+	return append([]appdetect.ProcessSummary(nil), f.processes...), f.err
 }
 
 func (f *fakeSecretStore) LoadOBSPassword() (string, error) {

@@ -468,6 +468,38 @@ select {
   font-size: 15px;
 }
 
+.process-input-field {
+  display: grid;
+  gap: 8px;
+}
+
+.process-input-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.process-input-actions button {
+  flex: 1 1 180px;
+}
+
+.process-action-button {
+  border: 1px solid color-mix(in srgb, var(--accent) 52%, var(--border) 48%);
+  color: var(--text);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, white 12%), var(--accent));
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 28%, transparent);
+  font-weight: 700;
+}
+
+.process-action-button:hover {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-hover) 85%, white 15%), var(--accent-hover));
+}
+
+.process-action-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-hover) 70%, white 30%);
+  outline-offset: 2px;
+}
+
 .update-panel {
   display: grid;
   gap: 6px;
@@ -685,6 +717,78 @@ select {
   color: var(--text-muted);
 }
 
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(9, 12, 16, 0.62);
+}
+
+.process-picker-dialog {
+  width: min(820px, calc(100vw - 36px));
+  max-height: min(80vh, 760px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 24px 64px var(--shadow);
+}
+
+.process-picker-header,
+.process-picker-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.process-picker-header {
+  border-bottom: 1px solid var(--border);
+}
+
+.process-picker-header h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 17px;
+}
+
+.process-picker-header p {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.process-picker-toolbar {
+  align-items: end;
+  border-bottom: 1px solid var(--border);
+}
+
+.process-picker-toolbar > label:first-child {
+  flex: 1 1 320px;
+}
+
+.process-picker-select-wrap {
+  padding: 16px;
+}
+
+.process-picker-state {
+  padding: 16px;
+  color: var(--text-muted);
+}
+
+.process-picker-state.error {
+  color: var(--danger);
+}
+
+.process-picker-actions {
+  margin: 0;
+  padding: 14px 16px 16px;
+}
+
 footer {
   display: grid;
   gap: 4px;
@@ -762,5 +866,11 @@ footer {
 
   .create-reward {
     grid-template-columns: 1fr;
+  }
+
+  .process-picker-header,
+  .process-picker-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

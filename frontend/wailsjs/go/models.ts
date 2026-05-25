@@ -225,6 +225,42 @@ export namespace app {
 	
 	
 	
+	export class ProcessListOptions {
+	    search: string;
+	    showOnlyVisibleApps: boolean;
+	    hideSystemProcesses: boolean;
+	    hideCommonDesktopApps: boolean;
+	    hideHelpersAndUtilities: boolean;
+	    likelyAvatarAppsOnly: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProcessListOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.search = source["search"];
+	        this.showOnlyVisibleApps = source["showOnlyVisibleApps"];
+	        this.hideSystemProcesses = source["hideSystemProcesses"];
+	        this.hideCommonDesktopApps = source["hideCommonDesktopApps"];
+	        this.hideHelpersAndUtilities = source["hideHelpersAndUtilities"];
+	        this.likelyAvatarAppsOnly = source["likelyAvatarAppsOnly"];
+	    }
+	}
+	export class ProcessSummary {
+	    processName: string;
+	    pid: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProcessSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.processName = source["processName"];
+	        this.pid = source["pid"];
+	    }
+	}
 	
 	export class SettingsInput {
 	    config: Settings;

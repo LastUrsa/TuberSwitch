@@ -6,6 +6,10 @@ export function ApplyMode(arg1) {
   return window['go']['main']['App']['ApplyMode'](arg1);
 }
 
+export function BrowseExecutable() {
+  return window['go']['main']['App']['BrowseExecutable']();
+}
+
 export function CheckForUpdates() {
   return window['go']['main']['App']['CheckForUpdates']();
 }
@@ -24,6 +28,10 @@ export function GetStatus() {
 
 export function GetTwitchRewards() {
   return window['go']['main']['App']['GetTwitchRewards']();
+}
+
+export function ListRunningProcesses(arg1) {
+  return window['go']['main']['App']['ListRunningProcesses'](arg1);
 }
 
 export function RefreshTwitchRewards() {

@@ -16,10 +16,10 @@ func TestDefaultAndNormalize(t *testing.T) {
 	if cfg.OBS.Port != 4455 {
 		t.Fatalf("default OBS port = %d", cfg.OBS.Port)
 	}
-	if cfg.AppDetection.ThreeDProcessName != "vnyan.exe" {
+	if cfg.AppDetection.ThreeDProcessName != "" {
 		t.Fatalf("default 3D process = %q", cfg.AppDetection.ThreeDProcessName)
 	}
-	if cfg.AppDetection.PNGProcessName != "veadotube-mini.exe" {
+	if cfg.AppDetection.PNGProcessName != "" {
 		t.Fatalf("default PNG process = %q", cfg.AppDetection.PNGProcessName)
 	}
 	if cfg.AppDetection.IntervalSeconds != 5 {
@@ -37,6 +37,7 @@ func TestDefaultAndNormalize(t *testing.T) {
 	cfg.AppDetection.IntervalSeconds = 1
 	cfg.AppDetection.ConflictBehavior = "invalid"
 	cfg.AppDetection.ManualOverrideCooldownSeconds = -1
+	cfg.AppDetection.ThreeDProcessName = `  C:\Apps\AvatarApp.exe  `
 	cfg.Normalize()
 
 	if cfg.OBS.Host != "127.0.0.1" {
@@ -62,6 +63,9 @@ func TestDefaultAndNormalize(t *testing.T) {
 	}
 	if cfg.AppDetection.ManualOverrideCooldownSeconds != 0 {
 		t.Fatalf("normalized manual cooldown = %d", cfg.AppDetection.ManualOverrideCooldownSeconds)
+	}
+	if cfg.AppDetection.ThreeDProcessName != "AvatarApp.exe" {
+		t.Fatalf("normalized 3D process = %q", cfg.AppDetection.ThreeDProcessName)
 	}
 }
 

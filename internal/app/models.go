@@ -36,6 +36,20 @@ type OBSInventory struct {
 	SourcesByScene map[string][]OBSSource `json:"sourcesByScene"`
 }
 
+type ProcessSummary struct {
+	ProcessName string `json:"processName"`
+	PID         int    `json:"pid"`
+}
+
+type ProcessListOptions struct {
+	Search                  string `json:"search"`
+	ShowOnlyVisibleApps     bool   `json:"showOnlyVisibleApps"`
+	HideSystemProcesses     bool   `json:"hideSystemProcesses"`
+	HideCommonDesktopApps   bool   `json:"hideCommonDesktopApps"`
+	HideHelpersAndUtilities bool   `json:"hideHelpersAndUtilities"`
+	LikelyAvatarAppsOnly    bool   `json:"likelyAvatarAppsOnly"`
+}
+
 type TwitchReward struct {
 	ID         string `json:"id"`
 	Title      string `json:"title"`

@@ -5,6 +5,8 @@ import {app} from '../models';
 
 export function ApplyMode(arg1:config.Mode):Promise<app.ActionResult>;
 
+export function BrowseExecutable():Promise<string>;
+
 export function CheckForUpdates():Promise<app.UpdateInfo>;
 
 export function CreateTwitchReward(arg1:string,arg2:number,arg3:string):Promise<app.ActionResult>;
@@ -14,6 +16,8 @@ export function GetOBSInventory(arg1:string):Promise<app.OBSInventory>;
 export function GetStatus():Promise<app.Status>;
 
 export function GetTwitchRewards():Promise<Array<app.TwitchReward>>;
+
+export function ListRunningProcesses(arg1:app.ProcessListOptions):Promise<Array<app.ProcessSummary>>;
 
 export function RefreshTwitchRewards():Promise<app.ActionResult>;
 

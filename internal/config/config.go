@@ -1,5 +1,7 @@
 package config
 
+import "strings"
+
 type Mode string
 
 const (
@@ -176,8 +178,8 @@ func (c Config) Profile(mode Mode) (ModeProfile, bool) {
 func DefaultAppDetection() AppDetectionConfig {
 	return AppDetectionConfig{
 		Enabled:                       false,
-		ThreeDProcessName:             "vnyan.exe",
-		PNGProcessName:                "veadotube-mini.exe",
+		ThreeDProcessName:             "",
+		PNGProcessName:                "",
 		IntervalSeconds:               5,
 		ConflictBehavior:              AppDetectionConflictDoNothing,
 		ApplyTwitchChanges:            true,
@@ -187,6 +189,8 @@ func DefaultAppDetection() AppDetectionConfig {
 
 func (c *AppDetectionConfig) Normalize() {
 	defaults := DefaultAppDetection()
+	c.ThreeDProcessName = normalizeExecutableName(c.ThreeDProcessName)
+	c.PNGProcessName = normalizeExecutableName(c.PNGProcessName)
 	if c.IntervalSeconds == 0 {
 		c.IntervalSeconds = defaults.IntervalSeconds
 	}
@@ -207,4 +211,16 @@ func (c *AppDetectionConfig) Normalize() {
 	if c.ManualOverrideCooldownSeconds < 0 {
 		c.ManualOverrideCooldownSeconds = 0
 	}
+}
+
+func normalizeExecutableName(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	lastSeparator := strings.LastIndexAny(value, `/\`)
+	if lastSeparator >= 0 && lastSeparator < len(value)-1 {
+		value = value[lastSeparator+1:]
+	}
+	return strings.TrimSpace(value)
 }

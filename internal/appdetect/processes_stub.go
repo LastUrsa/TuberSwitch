@@ -4,6 +4,6 @@ package appdetect
 
 type WindowsProcessProvider struct{}
 
-func (WindowsProcessProvider) ListProcessNames() ([]string, error) {
+func (WindowsProcessProvider) ListProcesses() ([]ProcessSummary, error) {
 	return nil, nil
 }

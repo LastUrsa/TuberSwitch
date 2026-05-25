@@ -110,7 +110,7 @@ func (s *Service) loop(ctx context.Context, cfg config.AppDetectionConfig, done 
 }
 
 func (s *Service) tick(cfg config.AppDetectionConfig) {
-	names, err := s.provider.ListProcessNames()
+	processes, err := s.provider.ListProcesses()
 	if err != nil {
 		s.logger.Printf("app detection process enumeration failed: %v", err)
 		s.updateSnapshot(func(snapshot *Snapshot) {
@@ -122,6 +122,7 @@ func (s *Service) tick(cfg config.AppDetectionConfig) {
 		})
 		return
 	}
+	names := ProcessNames(processes)
 
 	evaluation := Evaluate(cfg, names)
 	matches := matchedProcessNames(names, cfg)

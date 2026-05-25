@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,14 +36,16 @@ const (
 var updateReleaseEndpoint = githubLatestRelease
 
 type App struct {
-	ctx         context.Context
-	store       *config.Store
-	secretStore secretStore
-	logger      *log.Logger
-	closeLog    func()
-	obs         obsService
-	twitch      fullTwitchService
-	detector    appDetectionService
+	ctx            context.Context
+	store          *config.Store
+	secretStore    secretStore
+	logger         *log.Logger
+	closeLog       func()
+	obs            obsService
+	twitch         fullTwitchService
+	detector       appDetectionService
+	processes      appdetect.ProcessProvider
+	openFileDialog func(context.Context, runtime.OpenDialogOptions) (string, error)
 
 	mu         sync.Mutex
 	cfg        config.Config
@@ -108,16 +112,18 @@ func NewApp() *App {
 		cfg = config.Default()
 	}
 	app := &App{
-		store:       store,
-		secretStore: secrets.NewStore(),
-		logger:      logger,
-		closeLog:    closeLog,
-		obs:         obs.New(logger),
-		twitch:      twitch.New(logger),
-		cfg:         cfg,
-		lastAction:  "Ready",
+		store:          store,
+		secretStore:    secrets.NewStore(),
+		logger:         logger,
+		closeLog:       closeLog,
+		obs:            obs.New(logger),
+		twitch:         twitch.New(logger),
+		cfg:            cfg,
+		lastAction:     "Ready",
+		processes:      appdetect.WindowsProcessProvider{},
+		openFileDialog: runtime.OpenFileDialog,
 	}
-	app.detector = appdetect.New(logger, appdetect.WindowsProcessProvider{}, app.applyModeFromDetection, app.currentMode)
+	app.detector = appdetect.New(logger, app.processes, app.applyModeFromDetection, app.currentMode)
 	return app.initSecrets()
 }
 
@@ -211,9 +217,10 @@ func (a *App) CheckForUpdates() (appdto.UpdateInfo, error) {
 func (a *App) SaveConfig(input appdto.SettingsInput) appdto.ActionResult {
 	a.mu.Lock()
 	next := a.updatedConfigLocked(input.Config)
-	if validationErrors := validateAppDetectionConfig(next.AppDetection); len(validationErrors) > 0 {
+	validationErrors, validationWarnings := validateAppDetectionConfig(next.AppDetection)
+	if len(validationErrors) > 0 {
 		defer a.mu.Unlock()
-		return a.resultLocked(false, "App Detection settings are invalid", nil, validationErrors)
+		return a.resultLocked(false, "App Detection settings are invalid", validationWarnings, validationErrors)
 	}
 	oldPassword := a.cfg.OBS.Password
 	if input.UpdateOBSPassword {
@@ -243,7 +250,79 @@ func (a *App) SaveConfig(input appdto.SettingsInput) appdto.ActionResult {
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.resultLocked(true, "Settings saved", nil, nil)
+	return a.resultLocked(true, "Settings saved", validationWarnings, nil)
+}
+
+func (a *App) ListRunningProcesses(options appdto.ProcessListOptions) ([]appdto.ProcessSummary, error) {
+	a.logger.Printf("app detection process picker opened")
+	provider := a.processes
+	if provider == nil {
+		provider = appdetect.WindowsProcessProvider{}
+	}
+	processes, err := provider.ListProcesses()
+	if err != nil {
+		a.logger.Printf("app detection process enumeration failed: %v", err)
+		return nil, err
+	}
+	filtered := appdetect.FilterProcesses(processes, appdetect.ProcessFilterOptions{
+		Search:                  options.Search,
+		ShowOnlyVisibleApps:     options.ShowOnlyVisibleApps,
+		HideSystemProcesses:     options.HideSystemProcesses,
+		HideCommonDesktopApps:   options.HideCommonDesktopApps,
+		HideHelpersAndUtilities: options.HideHelpersAndUtilities,
+		LikelyAvatarAppsOnly:    options.LikelyAvatarAppsOnly,
+	})
+	currentPID := os.Getpid()
+	a.logger.Printf("app detection process picker returned %d processes", len(filtered))
+	result := make([]appdto.ProcessSummary, 0, len(filtered))
+	for _, process := range filtered {
+		if process.PID == currentPID {
+			continue
+		}
+		result = append(result, appdto.ProcessSummary{
+			ProcessName: process.ProcessName,
+			PID:         process.PID,
+		})
+	}
+	return result, nil
+}
+
+func (a *App) BrowseExecutable() (string, error) {
+	openDialog := a.openFileDialog
+	if openDialog == nil {
+		openDialog = runtime.OpenFileDialog
+	}
+	selectedPath, err := openDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Executable",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Executable files (*.exe)", Pattern: "*.exe"},
+			{DisplayName: "All files (*.*)", Pattern: "*.*"},
+		},
+	})
+	if err != nil {
+		a.logger.Printf("app detection executable browse failed: %v", err)
+		return "", err
+	}
+	filename := executableFilename(selectedPath)
+	if filename == "." {
+		filename = ""
+	}
+	if filename != "" {
+		a.logger.Printf("app detection browse executable selected filename=%s", filename)
+	}
+	return filename, nil
+}
+
+func executableFilename(selectedPath string) string {
+	selectedPath = strings.TrimSpace(selectedPath)
+	if selectedPath == "" {
+		return ""
+	}
+	lastSeparator := strings.LastIndexAny(selectedPath, `/\`)
+	if lastSeparator >= 0 && lastSeparator < len(selectedPath)-1 {
+		return strings.TrimSpace(selectedPath[lastSeparator+1:])
+	}
+	return strings.TrimSpace(filepath.Base(selectedPath))
 }
 
 func (a *App) TestOBSConnection() appdto.ActionResult {
@@ -911,21 +990,27 @@ func (a *App) appDetectionStatusLocked() string {
 	return a.detector.Snapshot().Status
 }
 
-func validateAppDetectionConfig(cfg config.AppDetectionConfig) []string {
+func validateAppDetectionConfig(cfg config.AppDetectionConfig) ([]string, []string) {
 	if !cfg.Enabled {
-		return nil
+		return nil, nil
 	}
 	errors := []string{}
-	if strings.TrimSpace(cfg.ThreeDProcessName) == "" {
-		errors = append(errors, "3D app process name is required when App Detection is enabled")
+	warnings := []string{}
+	threeDName := strings.TrimSpace(cfg.ThreeDProcessName)
+	pngName := strings.TrimSpace(cfg.PNGProcessName)
+	if threeDName == "" && pngName == "" {
+		errors = append(errors, "At least one app process name is required when App Detection is enabled")
 	}
-	if strings.TrimSpace(cfg.PNGProcessName) == "" {
-		errors = append(errors, "PNG app process name is required when App Detection is enabled")
+	if threeDName != "" && !strings.HasSuffix(strings.ToLower(threeDName), ".exe") {
+		warnings = append(warnings, "3D app process name usually ends with .exe on Windows")
+	}
+	if pngName != "" && !strings.HasSuffix(strings.ToLower(pngName), ".exe") {
+		warnings = append(warnings, "PNG app process name usually ends with .exe on Windows")
 	}
 	if cfg.IntervalSeconds < 2 {
 		errors = append(errors, "Detection interval must be at least 2 seconds")
 	}
-	return errors
+	return errors, warnings
 }
 
 func twitchTokensFromConfig(cfg config.TwitchConfig) secrets.TwitchTokens {

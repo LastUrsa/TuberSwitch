@@ -1,14 +1,16 @@
 import {type ReactNode, useEffect, useMemo, useState} from 'react';
 import './App.css';
 import tuberSwitchIcon from './assets/images/tuberswitch-icon.png';
-import {BrowserOpenURL, WindowSetMinSize, WindowSetSize} from '../wailsjs/runtime/runtime';
+import {BrowserOpenURL, LogError, LogInfo, WindowSetMinSize, WindowSetSize} from '../wailsjs/runtime/runtime';
 import {
   ApplyMode,
+  BrowseExecutable,
   CheckForUpdates,
   CreateTwitchReward,
   GetOBSInventory,
   GetStatus,
   GetTwitchRewards,
+  ListRunningProcesses,
   RefreshTwitchRewards,
   SaveConfig,
   SetReward3DOnly,
@@ -95,6 +97,20 @@ type OBSInventory = {
   sourcesByScene: Record<string, { name: string; sceneItemId: number }[]>;
 };
 
+type ProcessSummary = {
+  processName: string;
+  pid: number;
+};
+
+type ProcessListOptions = {
+  search: string;
+  showOnlyVisibleApps: boolean;
+  hideSystemProcesses: boolean;
+  hideCommonDesktopApps: boolean;
+  hideHelpersAndUtilities: boolean;
+  likelyAvatarAppsOnly: boolean;
+};
+
 type TwitchReward = {
   id: string;
   title: string;
@@ -116,6 +132,7 @@ const compactWindowSize = {width: 760, height: 460, minWidth: 680, minHeight: 42
 const settingsWindowSize = {width: 1080, height: 820, minWidth: 920, minHeight: 700};
 type SettingsTab = 'general' | 'obs' | 'twitch';
 type ThemeMode = 'dark' | 'light';
+type ProcessFieldKey = 'threeDProcessName' | 'pngProcessName';
 const themeStorageKey = 'tuberswitch-theme';
 
 function App() {
@@ -137,6 +154,7 @@ function App() {
   const [obsPassword, setObsPassword] = useState('');
   const [obsPasswordDirty, setObsPasswordDirty] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
+  const [processPickerField, setProcessPickerField] = useState<ProcessFieldKey | null>(null);
   const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof window === 'undefined') return 'dark';
     const storedTheme = window.localStorage.getItem(themeStorageKey);
@@ -177,6 +195,10 @@ function App() {
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
+        if (processPickerField) {
+          setProcessPickerField(null);
+          return;
+        }
         closeSettings();
       }
     }
@@ -291,7 +313,31 @@ function App() {
   }
 
   function closeSettings() {
+    setProcessPickerField(null);
     setSettingsOpen(false);
+  }
+
+  function setAppDetectionProcessName(field: ProcessFieldKey, value: string) {
+    if (!draft) return;
+    setDraft({
+      ...draft,
+      appDetection: {
+        ...draft.appDetection,
+        [field]: normalizeExecutableName(value),
+      },
+    });
+  }
+
+  async function browseExecutableFor(field: ProcessFieldKey) {
+    try {
+      const filename = normalizeExecutableName(await BrowseExecutable());
+      if (!filename) return;
+      setAppDetectionProcessName(field, filename);
+      LogInfo(`App detection browse selected filename: ${filename}`);
+    } catch (error) {
+      LogError(`App detection executable browse failed: ${String(error)}`);
+      setErrors([String(error)]);
+    }
   }
 
   async function checkForUpdates() {
@@ -437,25 +483,29 @@ function App() {
                           />
                           <span>Enable App Detection</span>
                         </label>
-                        <TextInput
-                          label="3D App Process Name"
+                        <ProcessNameField
+                          label="3D Mode Process"
                           info={(
                             <>
-                              <p>Use the executable name shown in Windows Task Manager, for example <code>vnyan.exe</code>.</p>
+                              <p>Type the executable name manually, select a running app, or browse to an executable.</p>
                             </>
                           )}
                           value={draft.appDetection.threeDProcessName}
-                          onChange={(value) => setDraft({...draft, appDetection: {...draft.appDetection, threeDProcessName: value}})}
+                          onChange={(value) => setAppDetectionProcessName('threeDProcessName', value)}
+                          onSelectRunningApp={() => setProcessPickerField('threeDProcessName')}
+                          onBrowseExecutable={() => void browseExecutableFor('threeDProcessName')}
                         />
-                        <TextInput
-                          label="PNG App Process Name"
+                        <ProcessNameField
+                          label="PNG Mode Process"
                           info={(
                             <>
-                              <p>Use the executable name shown in Windows Task Manager, for example <code>veadotube-mini.exe</code>.</p>
+                              <p>TuberSwitch stores only the executable filename, such as <code>AvatarApp.exe</code>.</p>
                             </>
                           )}
                           value={draft.appDetection.pngProcessName}
-                          onChange={(value) => setDraft({...draft, appDetection: {...draft.appDetection, pngProcessName: value}})}
+                          onChange={(value) => setAppDetectionProcessName('pngProcessName', value)}
+                          onSelectRunningApp={() => setProcessPickerField('pngProcessName')}
+                          onBrowseExecutable={() => void browseExecutableFor('pngProcessName')}
                         />
                         <NumberInput
                           label="Detection Interval (seconds)"
@@ -725,6 +775,18 @@ function App() {
               )}
             </section>
           </section>
+          <ProcessPickerDialog
+            open={!!processPickerField}
+            title={processPickerField === 'pngProcessName' ? 'Select PNG Mode Process' : 'Select 3D Mode Process'}
+            onClose={() => setProcessPickerField(null)}
+            onSelect={(process) => {
+              if (!processPickerField) return;
+              const normalizedName = normalizeExecutableName(process.processName);
+              setAppDetectionProcessName(processPickerField, normalizedName);
+              LogInfo(`App detection selected process name: ${normalizedName}`);
+              setProcessPickerField(null);
+            }}
+          />
         </div>
       )}
     </main>
@@ -750,6 +812,35 @@ function TextInput({label, value, onChange, type = 'text', info, placeholder}: {
       <FieldLabel text={label} info={info}/>
       <input type={type} value={value || ''} placeholder={placeholder} onChange={(event) => onChange(event.currentTarget.value)}/>
     </label>
+  );
+}
+
+function ProcessNameField({
+  label,
+  value,
+  onChange,
+  onSelectRunningApp,
+  onBrowseExecutable,
+  info,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onSelectRunningApp: () => void;
+  onBrowseExecutable: () => void;
+  info?: ReactNode;
+}) {
+  return (
+    <div className="process-input-field">
+      <label>
+        <FieldLabel text={label} info={info}/>
+        <input type="text" value={value || ''} onChange={(event) => onChange(event.currentTarget.value)}/>
+      </label>
+      <div className="process-input-actions">
+        <button type="button" className="process-action-button" onClick={onSelectRunningApp}>Select Running App</button>
+        <button type="button" className="process-action-button" onClick={onBrowseExecutable}>Browse Executable</button>
+      </div>
+    </div>
   );
 }
 
@@ -819,12 +910,191 @@ function CollapsibleSection({title, open, onToggle, children}: {title: string; o
   );
 }
 
+function ProcessPickerDialog({
+  open,
+  onClose,
+  onSelect,
+  title,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSelect: (process: ProcessSummary) => void;
+  title: string;
+}) {
+  const [processes, setProcesses] = useState<ProcessSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+  const [likelyAvatarAppsOnly, setLikelyAvatarAppsOnly] = useState(true);
+  const [showOnlyVisibleApps, setShowOnlyVisibleApps] = useState(true);
+  const [hideSystemProcesses, setHideSystemProcesses] = useState(true);
+  const [hideCommonApps, setHideCommonApps] = useState(true);
+  const [hideHelpersAndUtilities, setHideHelpersAndUtilities] = useState(true);
+  const [selectedKey, setSelectedKey] = useState('');
+
+  async function loadProcesses(options: ProcessListOptions) {
+    setLoading(true);
+    setError('');
+    try {
+      const nextProcesses = await ListRunningProcesses(options as never) as ProcessSummary[];
+      setProcesses(nextProcesses);
+    } catch (loadError) {
+      setError(String(loadError));
+      LogError(`App detection process list failed: ${String(loadError)}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery('');
+    setSelectedKey('');
+    setLikelyAvatarAppsOnly(true);
+    setShowOnlyVisibleApps(true);
+    setHideSystemProcesses(true);
+    setHideCommonApps(true);
+    setHideHelpersAndUtilities(true);
+    LogInfo(`App detection process picker opened: ${title}`);
+  }, [open, title]);
+
+  const options = useMemo(() => ({
+    search: query,
+    likelyAvatarAppsOnly,
+    showOnlyVisibleApps,
+    hideSystemProcesses,
+    hideCommonDesktopApps: hideCommonApps,
+    hideHelpersAndUtilities,
+  }), [hideCommonApps, hideHelpersAndUtilities, hideSystemProcesses, likelyAvatarAppsOnly, query, showOnlyVisibleApps]);
+
+  useEffect(() => {
+    if (!open) return;
+    void loadProcesses(options);
+  }, [open, options]);
+
+  const selectedProcess = processes.find((process) => processKey(process) === selectedKey) || null;
+
+  if (!open) return null;
+
+  return (
+    <div className="dialog-backdrop" onClick={onClose}>
+      <section
+        className="process-picker-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="process-picker-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="process-picker-header">
+          <div>
+            <h3 id="process-picker-title">{title}</h3>
+            <p>Select a running process to copy its executable name into this field.</p>
+          </div>
+          <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+        </div>
+        <div className="process-picker-toolbar">
+          <label>
+            <FieldLabel text="Search"/>
+            <input
+              type="text"
+              value={query}
+              placeholder="Filter by process name"
+              onChange={(event) => setQuery(event.currentTarget.value)}
+            />
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={likelyAvatarAppsOnly}
+              onChange={(event) => setLikelyAvatarAppsOnly(event.currentTarget.checked)}
+            />
+            <span>Likely avatar apps only</span>
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={showOnlyVisibleApps}
+              onChange={(event) => setShowOnlyVisibleApps(event.currentTarget.checked)}
+            />
+            <span>Show only visible app windows</span>
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={hideSystemProcesses}
+              onChange={(event) => setHideSystemProcesses(event.currentTarget.checked)}
+            />
+            <span>Hide system processes</span>
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={hideCommonApps}
+              onChange={(event) => setHideCommonApps(event.currentTarget.checked)}
+            />
+            <span>Hide common desktop apps</span>
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={hideHelpersAndUtilities}
+              onChange={(event) => setHideHelpersAndUtilities(event.currentTarget.checked)}
+            />
+            <span>Hide helpers and utilities</span>
+          </label>
+          <button type="button" className="secondary" onClick={() => void loadProcesses(options)} disabled={loading}>Refresh</button>
+        </div>
+        {loading && <div className="process-picker-state">Loading running processes...</div>}
+        {error && <div className="process-picker-state error">{error}</div>}
+        {!loading && !error && (
+          <div className="process-picker-select-wrap">
+            {processes.length === 0 ? (
+              <div className="process-picker-state">No running processes match the current filter.</div>
+            ) : (
+              <label>
+                <FieldLabel text="Running App"/>
+                <select value={selectedKey} onChange={(event) => setSelectedKey(event.currentTarget.value)}>
+                  <option value="">Select a process...</option>
+                  {processes.map((process) => (
+                    <option key={processKey(process)} value={processKey(process)}>
+                      {formatProcessOption(process)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+        )}
+        <div className="button-row process-picker-actions">
+          <button type="button" onClick={() => selectedProcess && onSelect(selectedProcess)} disabled={!selectedProcess}>Select</button>
+          <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function buildSettingsInput(config: Config, obsPassword: string, updateObsPassword: boolean): SettingsInput {
   return {
     config,
     obsPassword,
     updateObsPassword,
   };
+}
+
+function normalizeExecutableName(value: string) {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) return '';
+  const segments = trimmedValue.split(/[\\/]/);
+  return segments[segments.length - 1].trim();
+}
+
+function processKey(process: ProcessSummary) {
+  return `${process.processName}:${process.pid}`;
+}
+
+function formatProcessOption(process: ProcessSummary) {
+  return `${process.processName || 'Unknown process'} (PID ${process.pid})`;
 }
 
 export default App;
