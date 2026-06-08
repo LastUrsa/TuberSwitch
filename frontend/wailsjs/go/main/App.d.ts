@@ -11,6 +11,10 @@ export function CheckForUpdates():Promise<app.UpdateInfo>;
 
 export function CreateTwitchReward(arg1:string,arg2:number,arg3:string):Promise<app.ActionResult>;
 
+export function DeleteProfile(arg1:string):Promise<app.ActionResult>;
+
+export function DuplicateProfile():Promise<app.ActionResult>;
+
 export function GetOBSInventory(arg1:string):Promise<app.OBSInventory>;
 
 export function GetStatus():Promise<app.Status>;
@@ -22,6 +26,12 @@ export function ListRunningProcesses(arg1:app.ProcessListOptions):Promise<Array<
 export function RefreshTwitchRewards():Promise<app.ActionResult>;
 
 export function SaveConfig(arg1:app.SettingsInput):Promise<app.ActionResult>;
+
+export function SaveProfile(arg1:app.SettingsInput):Promise<app.ActionResult>;
+
+export function SaveProfileAs(arg1:string,arg2:app.SettingsInput):Promise<app.ActionResult>;
+
+export function SelectProfile(arg1:string):Promise<app.ActionResult>;
 
 export function SetReward3DOnly(arg1:string,arg2:boolean):Promise<app.ActionResult>;
 

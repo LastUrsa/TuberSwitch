@@ -18,6 +18,14 @@ export function CreateTwitchReward(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateTwitchReward'](arg1, arg2, arg3);
 }
 
+export function DeleteProfile(arg1) {
+  return window['go']['main']['App']['DeleteProfile'](arg1);
+}
+
+export function DuplicateProfile() {
+  return window['go']['main']['App']['DuplicateProfile']();
+}
+
 export function GetOBSInventory(arg1) {
   return window['go']['main']['App']['GetOBSInventory'](arg1);
 }
@@ -40,6 +48,18 @@ export function RefreshTwitchRewards() {
 
 export function SaveConfig(arg1) {
   return window['go']['main']['App']['SaveConfig'](arg1);
+}
+
+export function SaveProfile(arg1) {
+  return window['go']['main']['App']['SaveProfile'](arg1);
+}
+
+export function SaveProfileAs(arg1, arg2) {
+  return window['go']['main']['App']['SaveProfileAs'](arg1, arg2);
+}
+
+export function SelectProfile(arg1) {
+  return window['go']['main']['App']['SelectProfile'](arg1);
 }
 
 export function SetReward3DOnly(arg1, arg2) {

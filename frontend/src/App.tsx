@@ -12,7 +12,11 @@ import {
   GetTwitchRewards,
   ListRunningProcesses,
   RefreshTwitchRewards,
+  DeleteProfile,
   SaveConfig,
+  SaveProfile,
+  SaveProfileAs,
+  SelectProfile,
   SetReward3DOnly,
   StartTwitchLogin,
   SyncOBS,
@@ -35,6 +39,9 @@ type Config = {
     channelId: string;
     channelName: string;
   };
+  rewardMappings: RewardMapping[];
+  profiles: Profile[];
+  activeProfileId: string;
   modeProfiles: unknown[];
   startupMode: 'restore-last' | 'always-3d' | 'always-png';
   currentMode: Mode;
@@ -64,6 +71,16 @@ type RewardMapping = {
   rewardName: string;
   is3DOnly: boolean;
   manageable: boolean;
+};
+
+type Profile = {
+  id: string;
+  name: string;
+  mode: Mode;
+  sources: Config['sources'];
+  sceneMappings: SceneMapping[];
+  rewardMappings: RewardMapping[];
+  lastUsed: string;
 };
 
 type Status = {
@@ -130,9 +147,10 @@ type UpdateInfo = {
 const emptyInventory: OBSInventory = {scenes: [], sources: [], sourcesByScene: {}};
 const compactWindowSize = {width: 920, height: 580, minWidth: 860, minHeight: 540};
 const settingsWindowSize = {width: 1200, height: 840, minWidth: 1040, minHeight: 720};
-type SettingsTab = 'general' | 'obs' | 'twitch';
+type SettingsTab = 'general' | 'connections' | 'profiles' | 'about';
 type ThemeMode = 'dark' | 'light';
 type ProcessFieldKey = 'threeDProcessName' | 'pngProcessName';
+type ProfileDialog = 'save-as' | 'delete' | null;
 const themeStorageKey = 'tuberswitch-theme';
 
 function App() {
@@ -155,6 +173,9 @@ function App() {
   const [obsPasswordDirty, setObsPasswordDirty] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   const [processPickerField, setProcessPickerField] = useState<ProcessFieldKey | null>(null);
+  const [profileDialog, setProfileDialog] = useState<ProfileDialog>(null);
+  const [profileNameInput, setProfileNameInput] = useState('');
+  const [profileDialogError, setProfileDialogError] = useState('');
   const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof window === 'undefined') return 'dark';
     const storedTheme = window.localStorage.getItem(themeStorageKey);
@@ -195,6 +216,10 @@ function App() {
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
+        if (profileDialog) {
+          closeProfileDialog();
+          return;
+        }
         if (processPickerField) {
           setProcessPickerField(null);
           return;
@@ -205,7 +230,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settingsOpen]);
+  }, [settingsOpen, processPickerField, profileDialog]);
 
   async function load() {
     const next = await GetStatus();
@@ -265,12 +290,83 @@ function App() {
     await run('Saving settings', () => SaveConfig(buildSettingsInput(draft, obsPassword, obsPasswordDirty) as never) as unknown as Promise<ActionResult>);
   }
 
+  async function saveCurrentProfile() {
+    if (!draft) return;
+    await run('Saving profile', () => SaveProfile(buildSettingsInput(draft, obsPassword, obsPasswordDirty) as never) as unknown as Promise<ActionResult>);
+  }
+
+  async function saveCurrentProfileAs() {
+    if (!draft) return;
+    setProfileNameInput('');
+    setProfileDialogError('');
+    setProfileDialog('save-as');
+  }
+
+  async function confirmSaveProfileAs() {
+    if (!draft) return;
+    const trimmedName = profileNameInput.trim();
+    if (!trimmedName) {
+      setProfileDialogError('Profile name is required.');
+      return;
+    }
+    closeProfileDialog();
+    await run('Saving profile', () => SaveProfileAs(trimmedName, buildSettingsInput(draft, obsPassword, obsPasswordDirty) as never) as unknown as Promise<ActionResult>);
+  }
+
+  async function deleteCurrentProfile() {
+    if (!draft) return;
+    const activeProfile = findActiveProfile(draft);
+    if (!activeProfile || activeProfile.id === 'default') return;
+    setProfileDialogError('');
+    setProfileDialog('delete');
+  }
+
+  async function confirmDeleteCurrentProfile() {
+    if (!draft) return;
+    const activeProfile = findActiveProfile(draft);
+    if (!activeProfile || activeProfile.id === 'default') return;
+    closeProfileDialog();
+    await run('Deleting profile', () => DeleteProfile(activeProfile.id) as unknown as Promise<ActionResult>);
+  }
+
+  async function selectProfile(profileID: string) {
+    if (!draft || profileID === draft.activeProfileId) return;
+    await run('Applying profile', () => SelectProfile(profileID) as unknown as Promise<ActionResult>);
+  }
+
+  function closeProfileDialog() {
+    setProfileDialog(null);
+    setProfileDialogError('');
+  }
+
   async function saveThen(label: string, action: () => Promise<ActionResult>) {
     if (!draft) return;
     setBusy('Saving settings');
     setErrors([]);
     try {
       const saved = await SaveConfig(buildSettingsInput(draft, obsPassword, obsPasswordDirty) as never) as unknown as ActionResult;
+      setStatus(saved.newStatus as unknown as Status);
+      setDraft(structuredClone((saved.newStatus as unknown as Status).config));
+      setObsPassword('');
+      setObsPasswordDirty(false);
+      if (!saved.ok) {
+        setErrors(saved.errors || [saved.message]);
+        return saved;
+      }
+      return await run(label, action);
+    } catch (error) {
+      setErrors([String(error)]);
+      setBusy('');
+      return undefined;
+    }
+  }
+
+  async function saveProfileThen(label: string, action: () => Promise<ActionResult>) {
+    if (!draft) return;
+    setBusy('Saving profile');
+    setErrors([]);
+    try {
+      const saved = await SaveProfile(buildSettingsInput(draft, obsPassword, obsPasswordDirty) as never) as unknown as ActionResult;
       setStatus(saved.newStatus as unknown as Status);
       setDraft(structuredClone((saved.newStatus as unknown as Status).config));
       setObsPassword('');
@@ -305,6 +401,14 @@ function App() {
     const sceneMappings = [...(draft.sceneMappings || [])];
     sceneMappings[index] = {...sceneMappings[index], ...patch};
     setDraft({...draft, sceneMappings});
+  }
+
+  function updateDesiredSceneSource(index: number, name: string, id: number) {
+    if (!draft) return;
+    const patch = draft.currentMode === '3D'
+      ? {vtuberSource: name, vtuberItemId: id, enabled: true}
+      : {pngTuberSource: name, pngTuberItemId: id, enabled: true};
+    updateSceneMapping(index, patch);
   }
 
   function openSettings() {
@@ -354,13 +458,11 @@ function App() {
   }
 
   const is3D = status?.currentMode === '3D';
-  const currentMode = status?.currentModeLabel || 'PNG VTuber Mode';
+  const currentMode = status?.currentModeLabel || 'PNGTuber Mode';
   const canInteract = !busy && status && draft;
   const currentVersion = updateInfo?.currentVersion || '0.4.0';
-  const modeSummary = is3D
-    ? '3D avatar scenes are active and ready for live switching.'
-    : 'PNG avatar scenes are active while 3D-only rewards stay out of the way.';
-  const nextModeLabel = is3D ? 'Switch to PNG VTuber mode' : 'Switch to 3D VTuber mode';
+  const nextModeLabel = is3D ? 'Switch to PNGTuber mode' : 'Switch to 3D VTuber mode';
+  const nextModeShortLabel = is3D ? 'PNGTuber' : '3D';
   const obsHostInvalid = !!draft && !draft.obs.host.trim();
   const obsPortInvalid = !!draft && draft.obs.port < 1;
   const twitchClientIdInvalid = !!draft && !draft.twitch.clientId.trim();
@@ -370,6 +472,11 @@ function App() {
     .filter(({mapping}) => !showSelectedScenesOnly || mapping.enabled);
   const manageableRewards = rewards.filter((reward) => reward.manageable);
   const unmanageableRewards = rewards.filter((reward) => !reward.manageable);
+  const activeProfile = draft ? findActiveProfile(draft) : null;
+  const profileDirty = !!draft && !!activeProfile && !profileMatchesDraft(activeProfile, draft);
+  const orderedProfiles = orderProfiles(draft?.profiles || []);
+  const recentProfiles = orderedProfiles.filter((profile) => profile.lastUsed);
+  const remainingProfiles = orderedProfiles.filter((profile) => !profile.lastUsed);
 
   return (
     <main className="app-shell">
@@ -403,27 +510,55 @@ function App() {
         <div className="mode-copy">
           <span className="panel-eyebrow">Active presentation mode</span>
           <strong>{currentMode}</strong>
-          <p className="mode-description">{modeSummary}</p>
-          <div className="mode-facts" aria-label="Mode support details">
-            <span className="mode-fact">{status?.appDetectionEnabled ? status?.appDetectionStatus || 'App detection enabled' : 'App detection off'}</span>
-          </div>
         </div>
-        <div className="mode-actions">
-          <span className={`mode-state-pill ${is3D ? 'is-live-3d' : 'is-live-png'}`}>
-            {is3D ? '3D live now' : 'PNG live now'}
-          </span>
-          <button
-            className={`mode-switch ${is3D ? 'on' : 'off'}`}
-            disabled={!canInteract}
-            onClick={() => run(is3D ? 'Switching to PNG' : 'Switching to 3D', () => ApplyMode(is3D ? 'PNG' : '3D') as unknown as Promise<ActionResult>)}
-            aria-pressed={is3D}
-          >
-            <span>{is3D ? '3D' : 'PNG'}</span>
-            <div className="mode-switch-copy">
-              <small>Next action</small>
-              <b>{nextModeLabel}</b>
+        <div className="mode-control-row">
+          {draft && (
+            <div className="profile-inline" aria-labelledby="profile-title">
+              <div className="profile-inline-head">
+                <span id="profile-title">Profile</span>
+              </div>
+              <div className="profile-inline-controls">
+                <label className="profile-select-label">
+                  <span className="sr-only">Active profile</span>
+                  <select
+                    value={draft.activeProfileId || 'default'}
+                    onChange={(event) => void selectProfile(event.currentTarget.value)}
+                    disabled={!canInteract}
+                    aria-label="Active profile"
+                  >
+                    {recentProfiles.length > 0 && (
+                      <optgroup label="Recently Used">
+                        {recentProfiles.map((profile) => (
+                          <option key={profile.id} value={profile.id}>{profile.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label="All Profiles">
+                      {remainingProfiles.map((profile) => (
+                        <option key={profile.id} value={profile.id}>{profile.name}</option>
+                      ))}
+                      {recentProfiles.map((profile) => (
+                        <option key={`all-${profile.id}`} value={profile.id}>{profile.name}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </label>
+              </div>
             </div>
-          </button>
+          )}
+          <div className="mode-actions">
+            <button
+              className={`mode-switch ${is3D ? 'on' : 'off'}`}
+              disabled={!canInteract}
+              onClick={() => run(is3D ? 'Switching to PNG' : 'Switching to 3D', () => ApplyMode(is3D ? 'PNG' : '3D') as unknown as Promise<ActionResult>)}
+              aria-label={nextModeLabel}
+              aria-pressed={is3D}
+              title={nextModeLabel}
+            >
+              <span aria-hidden="true"><SwitchIcon/></span>
+              <b>{nextModeShortLabel}</b>
+            </button>
+          </div>
         </div>
       </section>
 
@@ -468,22 +603,32 @@ function App() {
                 <button
                   type="button"
                   role="tab"
-                  className={`settings-tab ${settingsTab === 'obs' ? 'active' : ''}`}
-                  aria-selected={settingsTab === 'obs'}
-                  onClick={() => setSettingsTab('obs')}
+                  className={`settings-tab ${settingsTab === 'connections' ? 'active' : ''}`}
+                  aria-selected={settingsTab === 'connections'}
+                  onClick={() => setSettingsTab('connections')}
                 >
-                  <span className="settings-tab-title">OBS</span>
-                  <small>Connection and scene mapping</small>
+                  <span className="settings-tab-title">Connections</span>
+                  <small>OBS and Twitch auth</small>
                 </button>
                 <button
                   type="button"
                   role="tab"
-                  className={`settings-tab ${settingsTab === 'twitch' ? 'active' : ''}`}
-                  aria-selected={settingsTab === 'twitch'}
-                  onClick={() => setSettingsTab('twitch')}
+                  className={`settings-tab ${settingsTab === 'profiles' ? 'active' : ''}`}
+                  aria-selected={settingsTab === 'profiles'}
+                  onClick={() => setSettingsTab('profiles')}
                 >
-                  <span className="settings-tab-title">Twitch</span>
-                  <small>Login and rewards</small>
+                  <span className="settings-tab-title">Profiles</span>
+                  <small>Modes, scenes, rewards</small>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className={`settings-tab ${settingsTab === 'about' ? 'active' : ''}`}
+                  aria-selected={settingsTab === 'about'}
+                  onClick={() => setSettingsTab('about')}
+                >
+                  <span className="settings-tab-title">About</span>
+                  <small>Version and updates</small>
                 </button>
               </div>
 
@@ -503,7 +648,15 @@ function App() {
                           <option value="light">Light</option>
                         </select>
                       </label>
-                      <section className="inline-settings-section emphasis-section">
+                      <label>
+                        <FieldLabel text="Startup Mode"/>
+                        <select value={draft.startupMode} onChange={(event) => setDraft({...draft, startupMode: event.currentTarget.value as Config['startupMode']})}>
+                          <option value="restore-last">Restore Last Mode</option>
+                          <option value="always-3d">Always 3D</option>
+                          <option value="always-png">Always PNG</option>
+                        </select>
+                      </label>
+                      <section className="settings-subsection">
                         <div className="settings-subsection-head">
                           <span className="panel-eyebrow">Automation</span>
                           <h3>App Detection</h3>
@@ -580,29 +733,32 @@ function App() {
                         </div>
                       </section>
                     </div>
-                    <div className="settings-utility-row">
-                      <section className="about-panel" aria-label="About TuberSwitch">
-                        <span className="panel-eyebrow">About</span>
-                        <strong>TuberSwitch</strong>
-                        <p>Focused avatar mode coordination for OBS scenes, Twitch rewards, and lightweight Starsong utility workflows.</p>
-                        <div className="about-meta">
-                          <span>Starsong Tools utility</span>
-                          <span>Version {currentVersion}</span>
-                        </div>
-                      </section>
-                      <div className="button-row">
-                        <button type="button" className="icon-only-button" onClick={saveSettings} disabled={!!busy} aria-label="Save settings" title="Save settings">
-                          <SaveIcon/>
+                    <div className="button-row">
+                      <button type="button" className="icon-only-button" onClick={saveSettings} disabled={!!busy} aria-label="Save general settings" title="Save general settings">
+                        <SaveIcon/>
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {settingsTab === 'about' && (
+                <section className="settings-panel about-settings-panel">
+                  <div className="settings-column settings-workspace">
+                    <div className="settings-section-head">
+                      <span className="panel-eyebrow">Application</span>
+                      <h2>About TuberSwitch</h2>
+                      <p>Version {currentVersion} · Starsong Tools utility</p>
+                    </div>
+                    <div className="button-row">
+                      <button type="button" onClick={checkForUpdates} disabled={updateBusy}>
+                        <ButtonLabel icon={<RefreshIcon/>}>{updateBusy ? 'Checking for Updates' : 'Check for Updates'}</ButtonLabel>
+                      </button>
+                      {updateInfo?.updateAvailable && (
+                        <button type="button" className="highlight-button" onClick={() => BrowserOpenURL(updateInfo.releaseUrl)}>
+                          <ButtonLabel icon={<LaunchIcon/>}>Open GitHub Releases</ButtonLabel>
                         </button>
-                        <button type="button" onClick={checkForUpdates} disabled={updateBusy}>
-                          <ButtonLabel icon={<RefreshIcon/>}>{updateBusy ? 'Checking for Updates' : 'Check for Updates'}</ButtonLabel>
-                        </button>
-                        {updateInfo?.updateAvailable && (
-                          <button type="button" className="highlight-button" onClick={() => BrowserOpenURL(updateInfo.releaseUrl)}>
-                            <ButtonLabel icon={<LaunchIcon/>}>Open GitHub Releases</ButtonLabel>
-                          </button>
-                        )}
-                      </div>
+                      )}
                     </div>
                     {updateInfo && (
                       <div className={`update-panel ${updateInfo.updateAvailable ? 'available' : 'current'}`}>
@@ -614,77 +770,188 @@ function App() {
                 </section>
               )}
 
-              {settingsTab === 'obs' && (
-                <section className="settings-panel obs-settings-panel">
+              {settingsTab === 'connections' && (
+                <section className="settings-panel connections-settings-panel">
                   <div className="settings-column settings-workspace">
                     <div className="settings-section-head">
-                      <span className="panel-eyebrow">OBS integration</span>
-                      <h2>OBS settings</h2>
-                      <p>Connect to OBS WebSocket, then map the specific scenes and sources that should follow your live mode.</p>
+                      <span className="panel-eyebrow">External services</span>
+                      <h2>Connections</h2>
+                      <p>Connect TuberSwitch to OBS and Twitch. Profile-specific scene and reward behavior lives in Profiles.</p>
                     </div>
-                    <div className="form-grid settings-form-grid">
-                      <TextInput
-                        label="OBS WebSocket Host"
-                        info={(
-                          <>
-                            <p>Set this from <strong>Tools &gt; WebSocket Server Settings</strong> in OBS.</p>
-                            <p>The usual local default is <code>127.0.0.1</code>.</p>
-                          </>
-                        )}
-                        value={draft.obs.host}
-                        invalid={obsHostInvalid}
-                        helpText="Usually 127.0.0.1 for a local OBS setup."
-                        onChange={(value) => setDraft({...draft, obs: {...draft.obs, host: value}})}
-                      />
-                      <NumberInput
-                        label="OBS WebSocket Port"
-                        info={(
-                          <>
-                            <p>Use the port shown in <strong>Tools &gt; WebSocket Server Settings</strong> in OBS.</p>
-                          </>
-                        )}
-                        value={draft.obs.port}
-                        invalid={obsPortInvalid}
-                        helpText="Port must be a positive number."
-                        onChange={(value) => setDraft({...draft, obs: {...draft.obs, port: value}})}
-                      />
-                      <TextInput
-                        label="OBS WebSocket Password"
-                        info={(
-                          <>
-                            <p>Use the password from <strong>Tools &gt; WebSocket Server Settings</strong> in OBS.</p>
-                            <p>Stored securely in the OS credential store and never shown back in the app.</p>
-                          </>
-                        )}
-                        type="password"
-                        value={obsPassword}
-                        placeholder={draft.obs.passwordConfigured ? 'Saved securely. Enter a new value to replace it.' : 'Enter OBS WebSocket password'}
-                        helpText={draft.obs.passwordConfigured ? 'A password is already stored securely. Enter a new value only if OBS changed.' : undefined}
-                        onChange={(value) => {
-                          setObsPassword(value);
-                          setObsPasswordDirty(true);
-                        }}
-                      />
-                      <label className="check-row settings-checkbox-row">
-                        <input
-                          type="checkbox"
-                          checked={draft.obs.allowRemote}
-                          onChange={(event) => setDraft({...draft, obs: {...draft.obs, allowRemote: event.currentTarget.checked}})}
-                        />
-                        <span>Allow remote OBS connections</span>
+                    <div className="connections-grid">
+                      <section className="connection-group">
+                        <div className="settings-subsection-head">
+                          <span className="panel-eyebrow">OBS</span>
+                          <h3>WebSocket</h3>
+                          <p>Connect to OBS. Scene and source choices are edited per profile.</p>
+                        </div>
+                        <div className="form-grid settings-form-grid">
+                          <TextInput
+                            label="OBS WebSocket Host"
+                            info={(
+                              <>
+                                <p>Set this from <strong>Tools &gt; WebSocket Server Settings</strong> in OBS.</p>
+                                <p>The usual local default is <code>127.0.0.1</code>.</p>
+                              </>
+                            )}
+                            value={draft.obs.host}
+                            invalid={obsHostInvalid}
+                            helpText="Usually 127.0.0.1 for a local OBS setup."
+                            onChange={(value) => setDraft({...draft, obs: {...draft.obs, host: value}})}
+                          />
+                          <NumberInput
+                            label="OBS WebSocket Port"
+                            info={(
+                              <>
+                                <p>Use the port shown in <strong>Tools &gt; WebSocket Server Settings</strong> in OBS.</p>
+                              </>
+                            )}
+                            value={draft.obs.port}
+                            invalid={obsPortInvalid}
+                            helpText="Port must be a positive number."
+                            onChange={(value) => setDraft({...draft, obs: {...draft.obs, port: value}})}
+                          />
+                          <TextInput
+                            label="OBS WebSocket Password"
+                            info={(
+                              <>
+                                <p>Use the password from <strong>Tools &gt; WebSocket Server Settings</strong> in OBS.</p>
+                                <p>Stored securely in the OS credential store and never shown back in the app.</p>
+                              </>
+                            )}
+                            type="password"
+                            value={obsPassword}
+                            placeholder={draft.obs.passwordConfigured ? 'Saved securely. Enter a new value to replace it.' : 'Enter OBS WebSocket password'}
+                            helpText={draft.obs.passwordConfigured ? 'A password is already stored securely. Enter a new value only if OBS changed.' : undefined}
+                            onChange={(value) => {
+                              setObsPassword(value);
+                              setObsPasswordDirty(true);
+                            }}
+                          />
+                          <label className="check-row settings-checkbox-row">
+                            <input
+                              type="checkbox"
+                              checked={draft.obs.allowRemote}
+                              onChange={(event) => setDraft({...draft, obs: {...draft.obs, allowRemote: event.currentTarget.checked}})}
+                            />
+                            <span>Allow remote OBS connections</span>
+                          </label>
+                        </div>
+                      </section>
+
+                      <section className="connection-group">
+                        <div className="settings-subsection-head">
+                          <span className="panel-eyebrow">Twitch</span>
+                          <h3>Auth</h3>
+                          <p>Authenticate once, then use Profiles to decide which rewards follow each stream setup.</p>
+                        </div>
+                        <div className="form-grid">
+                          <TextInput
+                            label="Twitch Client ID"
+                            info={(
+                              <>
+                                <p>Create your app in the <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noreferrer">Twitch Developer Console</a>.</p>
+                                <p>Use a public app, request <code>channel:read:redemptions</code> and <code>channel:manage:redemptions</code>, and use <code>https://localhost</code> if Twitch insists on a redirect URI.</p>
+                                <p>Copy the Client ID from the app details page into this field.</p>
+                              </>
+                            )}
+                            type="password"
+                            value={draft.twitch.clientId}
+                            placeholder="Enter Twitch Client ID"
+                            invalid={twitchClientIdInvalid}
+                            helpText="Required before Twitch login or reward refresh can work."
+                            onChange={(value) => setDraft({...draft, twitch: {...draft.twitch, clientId: value}})}
+                          />
+                          <label className="check-row">
+                            <input
+                              type="checkbox"
+                              checked={draft.refreshRewardsOnStartup}
+                              onChange={(event) => setDraft({...draft, refreshRewardsOnStartup: event.currentTarget.checked})}
+                            />
+                            <span>Refresh Twitch rewards on startup</span>
+                          </label>
+                        </div>
+                        <div className="channel-name">
+                          Authenticated Channel: <strong>{draft.twitch.channelName || 'Not connected'}</strong>
+                        </div>
+                      </section>
+                    </div>
+
+                    <div className="button-row">
+                      <button className="icon-only-button" onClick={saveSettings} disabled={!!busy} aria-label="Save connection settings" title="Save connection settings">
+                        <SaveIcon/>
+                      </button>
+                      <button onClick={() => saveThen('Logging in', () => StartTwitchLogin() as unknown as Promise<ActionResult>)} disabled={!!busy}>
+                        <ButtonLabel icon={<LaunchIcon/>}>Login with Twitch</ButtonLabel>
+                      </button>
+                      <button onClick={() => saveThen('Refreshing rewards', () => RefreshTwitchRewards() as unknown as Promise<ActionResult>)} disabled={!!busy}>
+                        <ButtonLabel icon={<RefreshIcon/>}>Refresh Rewards</ButtonLabel>
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {settingsTab === 'profiles' && (
+                <section className="settings-panel profiles-settings-panel">
+                  <div className="settings-column settings-workspace">
+                    <div className="settings-section-head">
+                      <span className="panel-eyebrow">Stream setups</span>
+                      <h2>Profiles</h2>
+                      <p>Create and maintain reusable stream setups. Profiles own presentation mode, OBS mappings, and reward behavior.</p>
+                    </div>
+                    <div className="form-grid">
+                      <label>
+                        <FieldLabel text="Profile"/>
+                        <select
+                          value={draft.activeProfileId || 'default'}
+                          onChange={(event) => void selectProfile(event.currentTarget.value)}
+                          disabled={!canInteract}
+                          aria-label="Profile"
+                        >
+                          {recentProfiles.length > 0 && (
+                            <optgroup label="Recently Used">
+                              {recentProfiles.map((profile) => (
+                                <option key={profile.id} value={profile.id}>{profile.name}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                          <optgroup label="All Profiles">
+                            {remainingProfiles.map((profile) => (
+                              <option key={profile.id} value={profile.id}>{profile.name}</option>
+                            ))}
+                            {recentProfiles.map((profile) => (
+                              <option key={`all-${profile.id}`} value={profile.id}>{profile.name}</option>
+                            ))}
+                          </optgroup>
+                        </select>
+                      </label>
+                      <label>
+                        <FieldLabel text="Profile Mode"/>
+                        <select value={draft.currentMode} onChange={(event) => setDraft({...draft, currentMode: event.currentTarget.value as Mode})}>
+                          <option value="PNG">PNG</option>
+                          <option value="3D">3D</option>
+                        </select>
                       </label>
                     </div>
                     <div className="button-row">
-                      <button className="icon-only-button" onClick={saveSettings} disabled={!!busy} aria-label="Save OBS settings" title="Save OBS settings">
+                      <button className="icon-only-button" onClick={saveCurrentProfile} disabled={!!busy} aria-label="Save profile" title="Save profile">
                         <SaveIcon/>
                       </button>
+                      <button type="button" onClick={saveCurrentProfileAs} disabled={!canInteract}>
+                        <ButtonLabel icon={<PlusIcon/>}>Save As</ButtonLabel>
+                      </button>
+                      <button type="button" className="secondary icon-only-button" onClick={deleteCurrentProfile} disabled={!canInteract || draft.activeProfileId === 'default'} aria-label="Delete profile" title="Delete profile">
+                        <TrashIcon/>
+                      </button>
                       <button onClick={async () => {
-                        const result = await saveThen('Syncing OBS', () => SyncOBS() as unknown as Promise<ActionResult>);
+                        const result = await saveProfileThen('Syncing OBS', () => SyncOBS() as unknown as Promise<ActionResult>);
                         await loadInventory(result?.newStatus?.config?.sceneMappings?.[0]?.scene || '');
                       }} disabled={!!busy}>
                         <ButtonLabel icon={<RefreshIcon/>}>Sync Scenes & Sources</ButtonLabel>
                       </button>
                     </div>
+                    {profileDirty && <span className="profile-dirty-note">Unsaved profile changes *</span>}
 
                     <CollapsibleSection title="Scene Mapping" open={scenesOpen} onToggle={setScenesOpen}>
                       <div className="mapping-toolbar">
@@ -703,18 +970,18 @@ function App() {
                         <div className="scene-mapping-head">
                           <span>Use</span>
                           <span>Scene</span>
-                          <span>VTuber Source</span>
-                          <span>PNG Tuber Source</span>
+                          <span>Desired Source</span>
                         </div>
                         {(draft.sceneMappings || []).length === 0 && (
                           <EmptyStateRow
                             title="No scenes loaded yet"
-                            body="Sync OBS to load your scenes, then map the VTuber and PNG sources you want TuberSwitch to manage."
+                            body="Sync OBS to load your scenes, then choose the source this profile should enable in each scene."
                           />
                         )}
                         {visibleSceneMappings.map(({mapping, index}) => {
                           const sources = inventory.sourcesByScene?.[mapping.scene] || [];
-                          const missingSource = mapping.enabled && (!mapping.vtuberSource || !mapping.pngTuberSource);
+                          const desiredSource = draft.currentMode === '3D' ? mapping.vtuberSource : mapping.pngTuberSource;
+                          const missingSource = mapping.enabled && !desiredSource;
                           return (
                             <div className="scene-mapping-row" key={mapping.scene || index}>
                               <input
@@ -723,87 +990,20 @@ function App() {
                                 onChange={(event) => updateSceneMapping(index, {enabled: event.currentTarget.checked})}
                               />
                               <strong className="scene-name">
-                                {missingSource && <span className="warning-icon" title="Only selected sources in this scene will be toggled">!</span>}
+                                {missingSource && <span className="warning-icon" title="Choose the source this profile should enable in this scene">!</span>}
                                 <span>{mapping.scene}</span>
                               </strong>
                               <SourceSelect
-                                label="VTuber Source"
-                                value={mapping.vtuberSource}
+                                label="Desired Source"
+                                value={desiredSource}
                                 sources={sources}
-                                onChange={(name, id) => updateSceneMapping(index, {vtuberSource: name, vtuberItemId: id, enabled: true})}
-                              />
-                              <SourceSelect
-                                label="PNG Tuber Source"
-                                value={mapping.pngTuberSource}
-                                sources={sources}
-                                onChange={(name, id) => updateSceneMapping(index, {pngTuberSource: name, pngTuberItemId: id, enabled: true})}
+                                onChange={(name, id) => updateDesiredSceneSource(index, name, id)}
                               />
                             </div>
                           );
                         })}
                       </div>
                     </CollapsibleSection>
-
-                  </div>
-                </section>
-              )}
-
-              {settingsTab === 'twitch' && (
-                <section className="settings-panel twitch-settings-panel">
-                  <div className="settings-column settings-workspace">
-                    <div className="settings-section-head">
-                      <span className="panel-eyebrow">Twitch integration</span>
-                      <h2>Twitch settings</h2>
-                      <p>Authenticate once, keep rewards synced, and decide how your startup mode should behave between sessions.</p>
-                    </div>
-                    <div className="form-grid">
-                      <TextInput
-                        label="Twitch Client ID"
-                        info={(
-                          <>
-                            <p>Create your app in the <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noreferrer">Twitch Developer Console</a>.</p>
-                            <p>Use a public app, request <code>channel:read:redemptions</code> and <code>channel:manage:redemptions</code>, and use <code>https://localhost</code> if Twitch insists on a redirect URI.</p>
-                            <p>Copy the Client ID from the app details page into this field.</p>
-                          </>
-                        )}
-                        type="password"
-                        value={draft.twitch.clientId}
-                        placeholder="Enter Twitch Client ID"
-                        invalid={twitchClientIdInvalid}
-                        helpText="Required before Twitch login or reward refresh can work."
-                        onChange={(value) => setDraft({...draft, twitch: {...draft.twitch, clientId: value}})}
-                      />
-                      <label className="check-row">
-                        <input
-                          type="checkbox"
-                          checked={draft.refreshRewardsOnStartup}
-                          onChange={(event) => setDraft({...draft, refreshRewardsOnStartup: event.currentTarget.checked})}
-                        />
-                        <span>Refresh Twitch rewards on startup</span>
-                      </label>
-                      <label>
-                        <FieldLabel text="Startup Mode"/>
-                        <select value={draft.startupMode} onChange={(event) => setDraft({...draft, startupMode: event.currentTarget.value as Config['startupMode']})}>
-                          <option value="restore-last">Restore Last Mode</option>
-                          <option value="always-3d">Always 3D</option>
-                          <option value="always-png">Always PNG</option>
-                        </select>
-                      </label>
-                    </div>
-                    <div className="channel-name">
-                      Authenticated Channel: <strong>{draft.twitch.channelName || 'Not connected'}</strong>
-                    </div>
-                    <div className="button-row">
-                      <button className="icon-only-button" onClick={saveSettings} disabled={!!busy} aria-label="Save Twitch settings" title="Save Twitch settings">
-                        <SaveIcon/>
-                      </button>
-                      <button onClick={() => saveThen('Logging in', () => StartTwitchLogin() as unknown as Promise<ActionResult>)} disabled={!!busy}>
-                        <ButtonLabel icon={<LaunchIcon/>}>Login with Twitch</ButtonLabel>
-                      </button>
-                      <button onClick={() => saveThen('Refreshing rewards', () => RefreshTwitchRewards() as unknown as Promise<ActionResult>)} disabled={!!busy}>
-                        <ButtonLabel icon={<RefreshIcon/>}>Refresh Rewards</ButtonLabel>
-                      </button>
-                    </div>
 
                     <CollapsibleSection title="Create Reward" open={createRewardOpen} onToggle={setCreateRewardOpen}>
                       <div className="create-reward">
@@ -820,7 +1020,7 @@ function App() {
                       <div className="reward-table">
                         <div className="reward-head">
                           <span>Reward Name</span>
-                          <span>3D Only</span>
+                          <span>Enabled</span>
                         </div>
                         {manageableRewards.length === 0 && (
                           <EmptyStateRow
@@ -876,6 +1076,17 @@ function App() {
           />
         </div>
       )}
+      <ProfileActionDialog
+        kind={profileDialog}
+        profileName={activeProfile?.name || 'this profile'}
+        nameValue={profileNameInput}
+        error={profileDialogError}
+        busy={!!busy}
+        onNameChange={setProfileNameInput}
+        onClose={closeProfileDialog}
+        onSaveAs={() => void confirmSaveProfileAs()}
+        onDelete={() => void confirmDeleteCurrentProfile()}
+      />
     </main>
   );
 }
@@ -961,22 +1172,19 @@ function SourceSelect({label, value, sources, onChange}: {label: string; value: 
     return existing || !value ? sources : [{name: value, sceneItemId: 0}, ...sources];
   }, [sources, value]);
   return (
-    <label>
-      <FieldLabel text={label}/>
-      <select
-        className={!value ? 'field-control invalid' : 'field-control'}
-        aria-invalid={!value || undefined}
-        value={value || ''}
-        onChange={(event) => {
-          const source = sources.find((item) => item.name === event.currentTarget.value);
-          onChange(event.currentTarget.value, source?.sceneItemId || 0);
-        }}
-      >
-        <option value="">Select...</option>
-        {values.map((source) => <option key={`${source.name}-${source.sceneItemId}`} value={source.name}>{source.name}</option>)}
-      </select>
-      {!value && <span className="field-help">Select a source so this scene can switch cleanly.</span>}
-    </label>
+    <select
+      className={!value ? 'field-control invalid' : 'field-control'}
+      aria-label={label}
+      aria-invalid={!value || undefined}
+      value={value || ''}
+      onChange={(event) => {
+        const source = sources.find((item) => item.name === event.currentTarget.value);
+        onChange(event.currentTarget.value, source?.sceneItemId || 0);
+      }}
+    >
+      <option value="">Select...</option>
+      {values.map((source) => <option key={`${source.name}-${source.sceneItemId}`} value={source.name}>{source.name}</option>)}
+    </select>
   );
 }
 
@@ -1021,6 +1229,98 @@ function CollapsibleSection({title, open, onToggle, children}: {title: string; o
       </button>
       {open && <div className="collapsible-body">{children}</div>}
     </section>
+  );
+}
+
+function ProfileActionDialog({
+  kind,
+  profileName,
+  nameValue,
+  error,
+  busy,
+  onNameChange,
+  onClose,
+  onSaveAs,
+  onDelete,
+}: {
+  kind: ProfileDialog;
+  profileName: string;
+  nameValue: string;
+  error: string;
+  busy: boolean;
+  onNameChange: (value: string) => void;
+  onClose: () => void;
+  onSaveAs: () => void;
+  onDelete: () => void;
+}) {
+  if (!kind) return null;
+
+  const title = kind === 'save-as'
+    ? 'Save Profile As'
+    : 'Delete Profile';
+
+  return (
+    <div className="dialog-backdrop" onClick={onClose}>
+      <section
+        className="profile-action-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="profile-action-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="profile-action-header">
+          <h3 id="profile-action-title">{title}</h3>
+          <button type="button" className="secondary icon-only-button" onClick={onClose} aria-label="Close dialog">
+            <CloseIcon/>
+          </button>
+        </div>
+
+        {kind === 'save-as' && (
+          <form
+            className="profile-action-body"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSaveAs();
+            }}
+          >
+            <label>
+              <FieldLabel text="Profile Name"/>
+              <input
+                autoFocus
+                type="text"
+                value={nameValue}
+                aria-invalid={!!error || undefined}
+                onChange={(event) => onNameChange(event.currentTarget.value)}
+              />
+            </label>
+            {error && <div className="profile-action-error">{error}</div>}
+            <div className="button-row profile-action-buttons">
+              <button type="submit" disabled={busy}>
+                <ButtonLabel icon={<SaveIcon/>}>Save</ButtonLabel>
+              </button>
+              <button type="button" className="secondary" onClick={onClose}>
+                <ButtonLabel icon={<CloseIcon/>}>Cancel</ButtonLabel>
+              </button>
+            </div>
+          </form>
+        )}
+
+        {kind === 'delete' && (
+          <div className="profile-action-body">
+            <p>Delete <strong>{profileName}</strong>? This removes the saved profile, but does not change OBS or Twitch.</p>
+            <div className="button-row profile-action-buttons">
+              <button type="button" className="danger-button" onClick={onDelete} disabled={busy}>
+                <ButtonLabel icon={<TrashIcon/>}>Delete</ButtonLabel>
+              </button>
+              <button type="button" className="secondary" onClick={onClose}>
+                <ButtonLabel icon={<CloseIcon/>}>Cancel</ButtonLabel>
+              </button>
+            </div>
+          </div>
+        )}
+
+      </section>
+    </div>
   );
 }
 
@@ -1216,6 +1516,10 @@ function RefreshIcon() {
   return iconPath('M12.6 4.9A5.4 5.4 0 1 0 13.3 10M12.6 4.9V2.7m0 2.2H10.4');
 }
 
+function SwitchIcon() {
+  return iconPath('M3 5h8.5m0 0L9.2 2.7M11.5 5 9.2 7.3M13 11H4.5m0 0 2.3-2.3M4.5 11l2.3 2.3');
+}
+
 function LaunchIcon() {
   return iconPath('M6.1 3h6.9v6.9M13 3 7 9m-2.5-4.5H3.5v8h8V11');
 }
@@ -1240,6 +1544,10 @@ function CheckIcon() {
   return iconPath('M3.5 8.2 6.6 11 12.5 5');
 }
 
+function TrashIcon() {
+  return iconPath('M3.5 4.5h9M6 4.5V3h4v1.5m-5.5 0 .5 8h6l.5-8M7 6.8v3.8M9 6.8v3.8');
+}
+
 function buildSettingsInput(config: Config, obsPassword: string, updateObsPassword: boolean): SettingsInput {
   return {
     config,
@@ -1261,6 +1569,32 @@ function processKey(process: ProcessSummary) {
 
 function formatProcessOption(process: ProcessSummary) {
   return `${process.processName || 'Unknown process'} (PID ${process.pid})`;
+}
+
+function findActiveProfile(config: Config) {
+  return (config.profiles || []).find((profile) => profile.id === config.activeProfileId) || null;
+}
+
+function profileMatchesDraft(profile: Profile, config: Config) {
+  return profile.mode === config.currentMode
+    && stableStringify(profile.sources || {}) === stableStringify(config.sources || {})
+    && stableStringify(profile.sceneMappings || []) === stableStringify(config.sceneMappings || [])
+    && stableStringify(profile.rewardMappings || []) === stableStringify(config.rewardMappings || []);
+}
+
+function orderProfiles(profiles: Profile[]) {
+  return [...profiles].sort((left, right) => {
+    const leftTime = Date.parse(left.lastUsed || '') || 0;
+    const rightTime = Date.parse(right.lastUsed || '') || 0;
+    if (leftTime !== rightTime) return rightTime - leftTime;
+    if (left.id === 'default') return -1;
+    if (right.id === 'default') return 1;
+    return left.name.localeCompare(right.name);
+  });
+}
+
+function stableStringify(value: unknown) {
+  return JSON.stringify(value);
 }
 
 export default App;

@@ -1,6 +1,6 @@
 # TuberSwitch
 
-TuberSwitch is a Windows desktop app for switching between a 3D VTuber source and a PNG Tuber source in OBS while keeping Twitch Channel Point rewards in sync with the active mode.
+TuberSwitch is a Windows desktop app for switching between a 3D VTuber source and a PNGTuber source in OBS while keeping Twitch Channel Point rewards in sync with the active mode.
 
 Built with Wails, Go, and React.
 
@@ -14,8 +14,9 @@ TuberSwitch coordinates:
 Main capabilities:
 
 - one-click switching between 3D and PNG modes
-- per-scene OBS source mappings
-- Twitch reward management with `3D Only` rewards
+- reusable stream profiles for mode, OBS scenes, and rewards
+- per-scene desired OBS source mappings
+- Twitch reward enablement per profile
 - optional App Detection based on running process names
 - secure storage for the OBS password and Twitch tokens
 
@@ -35,23 +36,25 @@ Development:
 
 ## Quick Start
 
-1. Open `Settings > OBS Settings`.
+1. Open `Settings > Connections`.
 2. Enter the OBS host, port, and password.
-3. Click `Save`, then `Sync Scenes & Sources`.
-4. Configure the `VTuber Source` and `PNG Tuber Source` for the scenes you want managed.
-5. Open `Settings > Twitch`.
-6. Enter the Twitch Client ID.
-7. Click `Save`, then `Login with Twitch`.
-8. Complete device activation in the browser.
-9. Click `Refresh Rewards`.
-10. Mark any rewards that should be `3D Only`.
+3. Enter the Twitch Client ID.
+4. Click `Save connection settings`, then `Login with Twitch`.
+5. Complete device activation in the browser.
+6. Click `Refresh Rewards`.
+7. Open `Settings > Profiles`.
+8. Choose the profile mode.
+9. Click `Sync Scenes & Sources`.
+10. For each OBS scene you want managed, choose the `Desired Source`.
+11. Check `Enabled` for rewards that should be available in that profile.
+12. Click `Save profile`.
 
 Optional:
 
-11. Open `Settings > General`.
-12. Enable `App Detection`.
-13. Configure at least one process name.
-14. Save the settings.
+13. Open `Settings > General`.
+14. Enable `App Detection`.
+15. Configure at least one process name.
+16. Save the settings.
 
 UI notes:
 
@@ -76,6 +79,8 @@ You can configure a process name by:
 
 TuberSwitch stores only the executable filename, such as `AvatarApp.exe`. Matching is case-insensitive.
 
+When a configured app is detected, TuberSwitch applies the most recently used profile with the matching mode. For example, a PNG mode process applies a PNGTuber profile, while a 3D mode process applies a 3D profile. If no profile exists for the detected mode, TuberSwitch falls back to switching the mode directly.
+
 The running-app picker filters aggressively by default to reduce noise, including likely-avatar-only filtering, visible-window filtering, and hiding common system/helper processes. If the app you want is missing, disable filters and refresh the list.
 
 ## Development
@@ -90,7 +95,7 @@ The current frontend aligns with the Starsong compact utility shell used across 
 
 - compact branded header with live connection status
 - focused mode card for the primary switch action
-- settings workspace split into `General`, `OBS`, and `Twitch` tabs
+- settings workspace split into `General`, `Connections`, `Profiles`, and `About` tabs
 - restrained gold highlight usage reserved for emphasized release and creation actions
 
 Install frontend dependencies:

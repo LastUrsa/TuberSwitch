@@ -63,6 +63,9 @@ type Settings struct {
 	Sources                 config.SourcesConfig      `json:"sources"`
 	SceneMappings           []config.SceneMapping     `json:"sceneMappings"`
 	Twitch                  TwitchSettings            `json:"twitch"`
+	RewardMappings          []config.RewardMapping    `json:"rewardMappings"`
+	Profiles                []config.Profile          `json:"profiles"`
+	ActiveProfileID         string                    `json:"activeProfileId"`
 	ModeProfiles            []config.ModeProfile      `json:"modeProfiles"`
 	StartupMode             config.StartupMode        `json:"startupMode"`
 	CurrentMode             config.Mode               `json:"currentMode"`

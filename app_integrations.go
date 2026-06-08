@@ -652,10 +652,17 @@ func (a *App) loadSecrets() error {
 func (a *App) applyModeFromDetection(mode config.Mode, applyTwitch bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	result := a.applyModeLocked(mode, applyModeOptions{
+	a.cfg.Normalize()
+	options := applyModeOptions{
 		applyTwitchChanges: applyTwitch,
 		source:             "auto",
-	})
+	}
+	var result appdto.ActionResult
+	if profile, ok := a.profileForModeLocked(mode); ok {
+		result = a.applyStreamProfileLocked(profile, options)
+	} else {
+		result = a.applyModeLocked(mode, options)
+	}
 	if len(result.Warnings) > 0 {
 		a.logger.Printf("app detection switch warnings: %s", strings.Join(result.Warnings, "; "))
 	}

@@ -1,14 +1,14 @@
 export namespace app {
-	
+
 	export class TwitchSettings {
 	    clientId: string;
 	    channelId: string;
 	    channelName: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new TwitchSettings(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.clientId = source["clientId"];
@@ -21,11 +21,11 @@ export namespace app {
 	    port: number;
 	    allowRemote: boolean;
 	    passwordConfigured: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new OBSSettings(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.host = source["host"];
@@ -39,29 +39,35 @@ export namespace app {
 	    sources: config.SourcesConfig;
 	    sceneMappings: config.SceneMapping[];
 	    twitch: TwitchSettings;
+	    rewardMappings: config.RewardMapping[];
+	    profiles: config.Profile[];
+	    activeProfileId: string;
 	    modeProfiles: config.ModeProfile[];
 	    startupMode: string;
 	    currentMode: string;
 	    refreshRewardsOnStartup: boolean;
 	    appDetection: config.AppDetectionConfig;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.obs = this.convertValues(source["obs"], OBSSettings);
 	        this.sources = this.convertValues(source["sources"], config.SourcesConfig);
 	        this.sceneMappings = this.convertValues(source["sceneMappings"], config.SceneMapping);
 	        this.twitch = this.convertValues(source["twitch"], TwitchSettings);
+	        this.rewardMappings = this.convertValues(source["rewardMappings"], config.RewardMapping);
+	        this.profiles = this.convertValues(source["profiles"], config.Profile);
+	        this.activeProfileId = source["activeProfileId"];
 	        this.modeProfiles = this.convertValues(source["modeProfiles"], config.ModeProfile);
 	        this.startupMode = source["startupMode"];
 	        this.currentMode = source["currentMode"];
 	        this.refreshRewardsOnStartup = source["refreshRewardsOnStartup"];
 	        this.appDetection = this.convertValues(source["appDetection"], config.AppDetectionConfig);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -89,11 +95,11 @@ export namespace app {
 	    lastAction: string;
 	    appDetectionStatus: string;
 	    appDetectionEnabled: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new Status(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.config = this.convertValues(source["config"], Settings);
@@ -105,7 +111,7 @@ export namespace app {
 	        this.appDetectionStatus = source["appDetectionStatus"];
 	        this.appDetectionEnabled = source["appDetectionEnabled"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -130,11 +136,11 @@ export namespace app {
 	    warnings: string[];
 	    errors: string[];
 	    newStatus: Status;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ActionResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
@@ -143,7 +149,7 @@ export namespace app {
 	        this.errors = source["errors"];
 	        this.newStatus = this.convertValues(source["newStatus"], Status);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -165,11 +171,11 @@ export namespace app {
 	export class OBSSource {
 	    name: string;
 	    sceneItemId: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new OBSSource(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -178,11 +184,11 @@ export namespace app {
 	}
 	export class OBSScene {
 	    name: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new OBSScene(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -192,18 +198,18 @@ export namespace app {
 	    scenes: OBSScene[];
 	    sources: OBSSource[];
 	    sourcesByScene: Record<string, Array<OBSSource>>;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new OBSInventory(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.scenes = this.convertValues(source["scenes"], OBSScene);
 	        this.sources = this.convertValues(source["sources"], OBSSource);
 	        this.sourcesByScene = this.convertValues(source["sourcesByScene"], Array<OBSSource>, true);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -222,9 +228,9 @@ export namespace app {
 		    return a;
 		}
 	}
-	
-	
-	
+
+
+
 	export class ProcessListOptions {
 	    search: string;
 	    showOnlyVisibleApps: boolean;
@@ -232,11 +238,11 @@ export namespace app {
 	    hideCommonDesktopApps: boolean;
 	    hideHelpersAndUtilities: boolean;
 	    likelyAvatarAppsOnly: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ProcessListOptions(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.search = source["search"];
@@ -250,34 +256,34 @@ export namespace app {
 	export class ProcessSummary {
 	    processName: string;
 	    pid: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ProcessSummary(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.processName = source["processName"];
 	        this.pid = source["pid"];
 	    }
 	}
-	
+
 	export class SettingsInput {
 	    config: Settings;
 	    obsPassword: string;
 	    updateObsPassword: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new SettingsInput(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.config = this.convertValues(source["config"], Settings);
 	        this.obsPassword = source["obsPassword"];
 	        this.updateObsPassword = source["updateObsPassword"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -296,18 +302,18 @@ export namespace app {
 		    return a;
 		}
 	}
-	
+
 	export class TwitchReward {
 	    id: string;
 	    title: string;
 	    enabled: boolean;
 	    is3DOnly: boolean;
 	    manageable: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new TwitchReward(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -317,18 +323,18 @@ export namespace app {
 	        this.manageable = source["manageable"];
 	    }
 	}
-	
+
 	export class UpdateInfo {
 	    currentVersion: string;
 	    latestVersion: string;
 	    updateAvailable: boolean;
 	    releaseUrl: string;
 	    message: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UpdateInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.currentVersion = source["currentVersion"];
@@ -342,7 +348,7 @@ export namespace app {
 }
 
 export namespace config {
-	
+
 	export class AppDetectionConfig {
 	    enabled: boolean;
 	    threeDProcessName: string;
@@ -351,11 +357,11 @@ export namespace config {
 	    conflictBehavior: string;
 	    applyTwitchChanges: boolean;
 	    manualOverrideCooldownSeconds: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new AppDetectionConfig(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.enabled = source["enabled"];
@@ -373,11 +379,11 @@ export namespace config {
 	    vtuberVisible: boolean;
 	    pngTuberVisible: boolean;
 	    enable3DRewards: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ModeProfile(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -387,6 +393,24 @@ export namespace config {
 	        this.enable3DRewards = source["enable3DRewards"];
 	    }
 	}
+	export class RewardMapping {
+	    rewardId: string;
+	    rewardName: string;
+	    is3DOnly: boolean;
+	    manageable: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new RewardMapping(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rewardId = source["rewardId"];
+	        this.rewardName = source["rewardName"];
+	        this.is3DOnly = source["is3DOnly"];
+	        this.manageable = source["manageable"];
+	    }
+	}
 	export class SceneMapping {
 	    scene: string;
 	    enabled: boolean;
@@ -394,11 +418,11 @@ export namespace config {
 	    vtuberItemId: number;
 	    pngTuberSource: string;
 	    pngTuberItemId: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new SceneMapping(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.scene = source["scene"];
@@ -415,11 +439,11 @@ export namespace config {
 	    vtuberItemId: number;
 	    pngTuberSource: string;
 	    pngTuberItemId: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new SourcesConfig(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.scene = source["scene"];
@@ -429,6 +453,50 @@ export namespace config {
 	        this.pngTuberItemId = source["pngTuberItemId"];
 	    }
 	}
+	export class Profile {
+	    id: string;
+	    name: string;
+	    mode: string;
+	    sources: SourcesConfig;
+	    sceneMappings: SceneMapping[];
+	    rewardMappings: RewardMapping[];
+	    lastUsed: string;
+
+	    static createFrom(source: any = {}) {
+	        return new Profile(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.mode = source["mode"];
+	        this.sources = this.convertValues(source["sources"], SourcesConfig);
+	        this.sceneMappings = this.convertValues(source["sceneMappings"], SceneMapping);
+	        this.rewardMappings = this.convertValues(source["rewardMappings"], RewardMapping);
+	        this.lastUsed = source["lastUsed"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+
 
 }
 
