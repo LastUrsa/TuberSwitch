@@ -7,6 +7,10 @@ function getToggleButton(label: string) {
   return screen.getAllByRole('button').find((button) => button.textContent?.includes(label)) as HTMLButtonElement;
 }
 
+function getSettingsTab(name: 'General' | 'OBS' | 'Twitch') {
+  return screen.getByRole('tab', {name: new RegExp(`^${name}`, 'i')});
+}
+
 const mockStatus = {
   config: {
     obs: {host: '127.0.0.1', port: 4455, allowRemote: false, passwordConfigured: false},
@@ -128,11 +132,11 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: /PNG VTuber Mode/i}));
+    await userEvent.click(screen.getByRole('button', {name: /Switch to 3D VTuber mode/i}));
 
     await waitFor(() => expect(api.ApplyMode).toHaveBeenCalledWith('3D'));
-    expect(await screen.findByRole('button', {name: /3D VTuber Mode/i})).toBeInTheDocument();
-    expect(screen.getByText('Current Mode').nextElementSibling).toHaveTextContent('3D VTuber Mode');
+    expect(await screen.findByRole('button', {name: /Switch to PNG VTuber mode/i})).toBeInTheDocument();
+    expect(screen.getByText('3D live now')).toBeInTheDocument();
   });
 
   it('checks for updates from the General tab and shows the releases action when an update is available', async () => {
@@ -147,7 +151,7 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
     await userEvent.click(screen.getByRole('button', {name: 'Check for Updates'}));
 
     await waitFor(() => expect(api.CheckForUpdates).toHaveBeenCalledTimes(1));
@@ -160,14 +164,14 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
     await userEvent.click(screen.getByLabelText('Enable App Detection'));
     await userEvent.type(screen.getByLabelText(/3D Mode Process/i), 'vseeface.exe');
     await userEvent.type(screen.getByLabelText(/PNG Mode Process/i), 'pngtuber.exe');
     await userEvent.clear(screen.getByLabelText(/Detection Interval \(seconds\)/i));
     await userEvent.type(screen.getByLabelText(/Detection Interval \(seconds\)/i), '7');
     await userEvent.selectOptions(screen.getByLabelText('Conflict Behavior'), 'prefer-3d');
-    await userEvent.click(screen.getByRole('button', {name: 'Save'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Save settings'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
@@ -182,7 +186,7 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
     await userEvent.click(screen.getAllByRole('button', {name: 'Select Running App'})[0]);
     expect(await screen.findByText('Select 3D Mode Process')).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText('Search'), 'avatar');
@@ -200,7 +204,7 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
     await userEvent.click(screen.getAllByRole('button', {name: 'Browse Executable'})[1]);
 
     await waitFor(() => expect(api.BrowseExecutable).toHaveBeenCalledTimes(1));
@@ -211,7 +215,7 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
     await userEvent.click(screen.getAllByRole('button', {name: 'Select Running App'})[0]);
     await screen.findByText('Select 3D Mode Process');
     await userEvent.click(screen.getByLabelText('Likely avatar apps only'));
@@ -224,7 +228,7 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
     await userEvent.click(screen.getAllByRole('button', {name: 'Select Running App'})[0]);
     await screen.findByText('Select 3D Mode Process');
     await userEvent.click(screen.getByLabelText('Likely avatar apps only'));
@@ -237,7 +241,7 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
     await userEvent.click(screen.getAllByRole('button', {name: 'Select Running App'})[0]);
     await screen.findByText('Select 3D Mode Process');
     await userEvent.click(screen.getByLabelText('Likely avatar apps only'));
@@ -254,8 +258,8 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await user.click(screen.getByRole('button', {name: 'Settings'}));
-    await user.click(screen.getByRole('tab', {name: 'OBS Settings'}));
+    await user.click(screen.getByRole('button', {name: 'Open settings'}));
+    await user.click(getSettingsTab('OBS'));
     const hostInput = screen.getByLabelText(/OBS WebSocket Host/i);
     await user.clear(hostInput);
     await user.type(hostInput, 'draft-host');
@@ -279,7 +283,7 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
     await userEvent.click(screen.getByRole('button', {name: 'Check for Updates'}));
 
     expect(await screen.findByText('Update check failed: Error: network down')).toBeInTheDocument();
@@ -289,9 +293,9 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'Twitch Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Twitch'));
 
     const manageable = getToggleButton('Manageable Rewards').parentElement as HTMLElement;
     expect(within(manageable).getByText('Dance')).toBeInTheDocument();
@@ -308,8 +312,8 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
 
     const warning = screen.getByTitle('Only selected sources in this scene will be toggled');
     expect(warning).toHaveTextContent('!');
@@ -320,8 +324,8 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
     expect(screen.getByText('BRB')).toBeInTheDocument();
 
     await userEvent.click(screen.getByLabelText('Show only selected scenes'));
@@ -333,9 +337,9 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'Twitch Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Twitch'));
     await userEvent.click(getToggleButton('Create Reward'));
     const createRewardSection = getToggleButton('Create Reward').parentElement as HTMLElement;
     await userEvent.type(within(createRewardSection).getByLabelText(/New Reward Name/i), 'Throw Tomato');
@@ -351,12 +355,12 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
     const hostInput = screen.getByLabelText(/OBS WebSocket Host/i);
     await userEvent.clear(hostInput);
     await userEvent.type(hostInput, 'obs-machine');
-    await userEvent.click(screen.getByRole('button', {name: 'Save'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Save OBS settings'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
@@ -367,8 +371,8 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
     await userEvent.click(screen.getByRole('button', {name: 'Sync Scenes & Sources'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
@@ -380,9 +384,9 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'Twitch Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Twitch'));
     const clientIdInput = screen.getByLabelText(/Twitch Client ID/i);
     await userEvent.clear(clientIdInput);
     await userEvent.type(clientIdInput, 'new-client-id');
@@ -398,9 +402,9 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'Twitch Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Twitch'));
     const manageable = getToggleButton('Manageable Rewards').parentElement as HTMLElement;
     await userEvent.click(within(manageable).getByRole('checkbox'));
 
@@ -413,9 +417,9 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
-    await userEvent.click(screen.getByRole('button', {name: 'Save'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(screen.getByRole('button', {name: 'Save OBS settings'}));
 
     expect(await screen.findByText('OBS password is required')).toBeInTheDocument();
     expect(api.SyncOBS).not.toHaveBeenCalled();
@@ -425,11 +429,11 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'Twitch Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Twitch'));
     await userEvent.selectOptions(screen.getByLabelText('Startup Mode'), 'always-3d');
-    await userEvent.click(screen.getByRole('button', {name: 'Save'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Save Twitch settings'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
@@ -440,9 +444,9 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'Twitch Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Twitch'));
     await userEvent.click(screen.getByRole('button', {name: 'Refresh Rewards'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
@@ -453,11 +457,11 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'Twitch Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Twitch'));
     await userEvent.click(screen.getByLabelText('Refresh Twitch rewards on startup'));
-    await userEvent.click(screen.getByRole('button', {name: 'Save'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Save Twitch settings'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
@@ -468,13 +472,14 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
     await userEvent.click(screen.getByRole('button', {name: 'Sync Scenes & Sources'}));
     await waitFor(() => expect(api.GetOBSInventory).toHaveBeenLastCalledWith('Main'));
-    const pngSourceSelects = screen.getAllByLabelText('PNG Tuber Source');
-    await userEvent.selectOptions(pngSourceSelects[0], 'PNG');
-    await userEvent.click(screen.getByRole('button', {name: 'Save'}));
+    const mainSceneRow = screen.getByText('Main').closest('.scene-mapping-row') as HTMLElement;
+    const mainSceneSelects = within(mainSceneRow).getAllByRole('combobox');
+    await userEvent.selectOptions(mainSceneSelects[1], 'PNG');
+    await userEvent.click(screen.getByRole('button', {name: 'Save OBS settings'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
@@ -486,13 +491,14 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
     await userEvent.click(screen.getByRole('button', {name: 'Sync Scenes & Sources'}));
     await waitFor(() => expect(api.GetOBSInventory).toHaveBeenLastCalledWith('Main'));
-    const vtuberSourceSelects = screen.getAllByLabelText('VTuber Source');
-    await userEvent.selectOptions(vtuberSourceSelects[1], 'PNG BRB');
-    await userEvent.click(screen.getByRole('button', {name: 'Save'}));
+    const brbSceneRow = screen.getByText('BRB').closest('.scene-mapping-row') as HTMLElement;
+    const brbSceneSelects = within(brbSceneRow).getAllByRole('combobox');
+    await userEvent.selectOptions(brbSceneSelects[0], 'PNG BRB');
+    await userEvent.click(screen.getByRole('button', {name: 'Save OBS settings'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
@@ -507,8 +513,8 @@ describe('App', () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
-    await userEvent.click(screen.getByRole('tab', {name: 'OBS Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('OBS'));
     await userEvent.click(screen.getByRole('button', {name: 'Sync Scenes & Sources'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
@@ -522,9 +528,22 @@ describe('App', () => {
     expect(screen.queryByText(/Config:/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Twitch Client Secret/i)).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', {name: 'Settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
     expect(screen.queryByText(/Config:/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Log:/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Twitch Client Secret/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps the aligned settings chrome accessible through icon-only controls and the About panel', async () => {
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+
+    expect(screen.getByRole('dialog', {name: 'Settings'})).toBeInTheDocument();
+    expect(screen.getByLabelText('About TuberSwitch')).toBeInTheDocument();
+    expect(screen.getByText('Starsong Tools utility')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Close settings'})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Save settings'})).toBeInTheDocument();
   });
 });
