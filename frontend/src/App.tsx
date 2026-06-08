@@ -128,8 +128,8 @@ type UpdateInfo = {
 };
 
 const emptyInventory: OBSInventory = {scenes: [], sources: [], sourcesByScene: {}};
-const compactWindowSize = {width: 760, height: 460, minWidth: 680, minHeight: 420};
-const settingsWindowSize = {width: 1080, height: 820, minWidth: 920, minHeight: 700};
+const compactWindowSize = {width: 920, height: 580, minWidth: 860, minHeight: 540};
+const settingsWindowSize = {width: 1200, height: 840, minWidth: 1040, minHeight: 720};
 type SettingsTab = 'general' | 'obs' | 'twitch';
 type ThemeMode = 'dark' | 'light';
 type ProcessFieldKey = 'threeDProcessName' | 'pngProcessName';
@@ -356,6 +356,15 @@ function App() {
   const is3D = status?.currentMode === '3D';
   const currentMode = status?.currentModeLabel || 'PNG VTuber Mode';
   const canInteract = !busy && status && draft;
+  const currentVersion = updateInfo?.currentVersion || '0.4.0';
+  const modeSummary = is3D
+    ? '3D avatar scenes are active and ready for live switching.'
+    : 'PNG avatar scenes are active while 3D-only rewards stay out of the way.';
+  const nextModeLabel = is3D ? 'Switch to PNG VTuber mode' : 'Switch to 3D VTuber mode';
+  const obsHostInvalid = !!draft && !draft.obs.host.trim();
+  const obsPortInvalid = !!draft && draft.obs.port < 1;
+  const twitchClientIdInvalid = !!draft && !draft.twitch.clientId.trim();
+  const appDetectionIntervalInvalid = !!draft && draft.appDetection.intervalSeconds < 2;
   const visibleSceneMappings = (draft?.sceneMappings || [])
     .map((mapping, index) => ({mapping, index}))
     .filter(({mapping}) => !showSelectedScenesOnly || mapping.enabled);
@@ -367,9 +376,10 @@ function App() {
       <section className="topbar">
         <div className="brand-block">
           <img className="brand-icon" src={tuberSwitchIcon} alt="TuberSwitch icon" />
-          <div>
+          <div className="brand-copy">
+            <span className="suite-eyebrow">Starsong Tools</span>
             <h1>TuberSwitch</h1>
-            <p>{currentMode}</p>
+            <p>Avatar mode control for OBS scenes and Twitch reward behavior.</p>
           </div>
         </div>
         <div className="topbar-actions">
@@ -383,26 +393,38 @@ function App() {
               connected={!!status?.twitchConnected}
             />
           </div>
-          <button className="secondary" onClick={settingsOpen ? closeSettings : openSettings}>
-            Settings
+          <button className="secondary icon-only-button" onClick={settingsOpen ? closeSettings : openSettings} aria-label="Open settings" title="Open settings">
+            <GearIcon/>
           </button>
         </div>
       </section>
 
       <section className="mode-panel">
         <div className="mode-copy">
-          <span>Current Mode</span>
+          <span className="panel-eyebrow">Active presentation mode</span>
           <strong>{currentMode}</strong>
+          <p className="mode-description">{modeSummary}</p>
+          <div className="mode-facts" aria-label="Mode support details">
+            <span className="mode-fact">{status?.appDetectionEnabled ? status?.appDetectionStatus || 'App detection enabled' : 'App detection off'}</span>
+          </div>
         </div>
-        <button
-          className={`mode-switch ${is3D ? 'on' : 'off'}`}
-          disabled={!canInteract}
-          onClick={() => run(is3D ? 'Switching to PNG' : 'Switching to 3D', () => ApplyMode(is3D ? 'PNG' : '3D') as unknown as Promise<ActionResult>)}
-          aria-pressed={is3D}
-        >
-          <span>{is3D ? '3D' : 'PNG'}</span>
-          <b>{is3D ? '3D VTuber Mode' : 'PNG VTuber Mode'}</b>
-        </button>
+        <div className="mode-actions">
+          <span className={`mode-state-pill ${is3D ? 'is-live-3d' : 'is-live-png'}`}>
+            {is3D ? '3D live now' : 'PNG live now'}
+          </span>
+          <button
+            className={`mode-switch ${is3D ? 'on' : 'off'}`}
+            disabled={!canInteract}
+            onClick={() => run(is3D ? 'Switching to PNG' : 'Switching to 3D', () => ApplyMode(is3D ? 'PNG' : '3D') as unknown as Promise<ActionResult>)}
+            aria-pressed={is3D}
+          >
+            <span>{is3D ? '3D' : 'PNG'}</span>
+            <div className="mode-switch-copy">
+              <small>Next action</small>
+              <b>{nextModeLabel}</b>
+            </div>
+          </button>
+        </div>
       </section>
 
       {errors.length > 0 && (
@@ -421,12 +443,13 @@ function App() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="settings-modal-header">
-              <div>
+              <div className="settings-modal-copy">
+                <span className="suite-eyebrow">Settings workspace</span>
                 <h2 id="settings-title">Settings</h2>
-                <p>Configure OBS, Twitch, and reward behavior.</p>
+                <p>Configure automation, OBS scene control, and Twitch reward behavior for this Starsong utility.</p>
               </div>
-              <button type="button" className="secondary" onClick={closeSettings}>
-                Close
+              <button type="button" className="secondary icon-only-button" onClick={closeSettings} aria-label="Close settings">
+                <CloseIcon/>
               </button>
             </div>
 
@@ -439,7 +462,8 @@ function App() {
                   aria-selected={settingsTab === 'general'}
                   onClick={() => setSettingsTab('general')}
                 >
-                  General
+                  <span className="settings-tab-title">General</span>
+                  <small>Theme and automation</small>
                 </button>
                 <button
                   type="button"
@@ -448,7 +472,8 @@ function App() {
                   aria-selected={settingsTab === 'obs'}
                   onClick={() => setSettingsTab('obs')}
                 >
-                  OBS Settings
+                  <span className="settings-tab-title">OBS</span>
+                  <small>Connection and scene mapping</small>
                 </button>
                 <button
                   type="button"
@@ -457,14 +482,19 @@ function App() {
                   aria-selected={settingsTab === 'twitch'}
                   onClick={() => setSettingsTab('twitch')}
                 >
-                  Twitch Settings
+                  <span className="settings-tab-title">Twitch</span>
+                  <small>Login and rewards</small>
                 </button>
               </div>
 
               {settingsTab === 'general' && (
-                <section className="settings-panel">
-                  <div className="settings-column">
-                    <h2>General Settings</h2>
+                <section className="settings-panel general-settings-panel">
+                  <div className="settings-column settings-workspace">
+                    <div className="settings-section-head">
+                      <span className="panel-eyebrow">Core preferences</span>
+                      <h2>General settings</h2>
+                      <p>Keep the shell readable, then define how TuberSwitch responds when your avatar apps come and go.</p>
+                    </div>
                     <div className="form-grid">
                       <label>
                         <FieldLabel text="Theme"/>
@@ -473,8 +503,12 @@ function App() {
                           <option value="light">Light</option>
                         </select>
                       </label>
-                      <section className="inline-settings-section">
-                        <h3>App Detection</h3>
+                      <section className="inline-settings-section emphasis-section">
+                        <div className="settings-subsection-head">
+                          <span className="panel-eyebrow">Automation</span>
+                          <h3>App Detection</h3>
+                          <p>Let TuberSwitch switch modes automatically based on the apps you actually launch.</p>
+                        </div>
                         <label className="check-row">
                           <input
                             type="checkbox"
@@ -509,10 +543,12 @@ function App() {
                         />
                         <NumberInput
                           label="Detection Interval (seconds)"
-                          value={draft.appDetection.intervalSeconds}
-                          min={2}
-                          onChange={(value) => setDraft({...draft, appDetection: {...draft.appDetection, intervalSeconds: value}})}
-                        />
+                        value={draft.appDetection.intervalSeconds}
+                        min={2}
+                        invalid={appDetectionIntervalInvalid}
+                        helpText="Use 2 seconds or more to avoid noisy mode churn."
+                        onChange={(value) => setDraft({...draft, appDetection: {...draft.appDetection, intervalSeconds: value}})}
+                      />
                         <label>
                           <FieldLabel text="Conflict Behavior"/>
                           <select
@@ -544,20 +580,29 @@ function App() {
                         </div>
                       </section>
                     </div>
-                    <div className="settings-note">
-                      <span>Current version</span>
-                      <strong>{updateInfo?.currentVersion || '0.4.0'}</strong>
-                    </div>
-                    <div className="button-row">
-                      <button type="button" onClick={saveSettings} disabled={!!busy}>Save</button>
-                      <button type="button" onClick={checkForUpdates} disabled={updateBusy}>
-                        {updateBusy ? 'Checking for Updates' : 'Check for Updates'}
-                      </button>
-                      {updateInfo?.updateAvailable && (
-                        <button type="button" className="secondary" onClick={() => BrowserOpenURL(updateInfo.releaseUrl)}>
-                          Open GitHub Releases
+                    <div className="settings-utility-row">
+                      <section className="about-panel" aria-label="About TuberSwitch">
+                        <span className="panel-eyebrow">About</span>
+                        <strong>TuberSwitch</strong>
+                        <p>Focused avatar mode coordination for OBS scenes, Twitch rewards, and lightweight Starsong utility workflows.</p>
+                        <div className="about-meta">
+                          <span>Starsong Tools utility</span>
+                          <span>Version {currentVersion}</span>
+                        </div>
+                      </section>
+                      <div className="button-row">
+                        <button type="button" className="icon-only-button" onClick={saveSettings} disabled={!!busy} aria-label="Save settings" title="Save settings">
+                          <SaveIcon/>
                         </button>
-                      )}
+                        <button type="button" onClick={checkForUpdates} disabled={updateBusy}>
+                          <ButtonLabel icon={<RefreshIcon/>}>{updateBusy ? 'Checking for Updates' : 'Check for Updates'}</ButtonLabel>
+                        </button>
+                        {updateInfo?.updateAvailable && (
+                          <button type="button" className="highlight-button" onClick={() => BrowserOpenURL(updateInfo.releaseUrl)}>
+                            <ButtonLabel icon={<LaunchIcon/>}>Open GitHub Releases</ButtonLabel>
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {updateInfo && (
                       <div className={`update-panel ${updateInfo.updateAvailable ? 'available' : 'current'}`}>
@@ -570,9 +615,13 @@ function App() {
               )}
 
               {settingsTab === 'obs' && (
-                <section className="settings-panel">
-                  <div className="settings-column">
-                    <h2>OBS Settings</h2>
+                <section className="settings-panel obs-settings-panel">
+                  <div className="settings-column settings-workspace">
+                    <div className="settings-section-head">
+                      <span className="panel-eyebrow">OBS integration</span>
+                      <h2>OBS settings</h2>
+                      <p>Connect to OBS WebSocket, then map the specific scenes and sources that should follow your live mode.</p>
+                    </div>
                     <div className="form-grid settings-form-grid">
                       <TextInput
                         label="OBS WebSocket Host"
@@ -583,6 +632,8 @@ function App() {
                           </>
                         )}
                         value={draft.obs.host}
+                        invalid={obsHostInvalid}
+                        helpText="Usually 127.0.0.1 for a local OBS setup."
                         onChange={(value) => setDraft({...draft, obs: {...draft.obs, host: value}})}
                       />
                       <NumberInput
@@ -593,6 +644,8 @@ function App() {
                           </>
                         )}
                         value={draft.obs.port}
+                        invalid={obsPortInvalid}
+                        helpText="Port must be a positive number."
                         onChange={(value) => setDraft({...draft, obs: {...draft.obs, port: value}})}
                       />
                       <TextInput
@@ -606,6 +659,7 @@ function App() {
                         type="password"
                         value={obsPassword}
                         placeholder={draft.obs.passwordConfigured ? 'Saved securely. Enter a new value to replace it.' : 'Enter OBS WebSocket password'}
+                        helpText={draft.obs.passwordConfigured ? 'A password is already stored securely. Enter a new value only if OBS changed.' : undefined}
                         onChange={(value) => {
                           setObsPassword(value);
                           setObsPasswordDirty(true);
@@ -621,14 +675,18 @@ function App() {
                       </label>
                     </div>
                     <div className="button-row">
-                      <button onClick={saveSettings} disabled={!!busy}>Save</button>
+                      <button className="icon-only-button" onClick={saveSettings} disabled={!!busy} aria-label="Save OBS settings" title="Save OBS settings">
+                        <SaveIcon/>
+                      </button>
                       <button onClick={async () => {
                         const result = await saveThen('Syncing OBS', () => SyncOBS() as unknown as Promise<ActionResult>);
                         await loadInventory(result?.newStatus?.config?.sceneMappings?.[0]?.scene || '');
-                      }} disabled={!!busy}>Sync Scenes & Sources</button>
+                      }} disabled={!!busy}>
+                        <ButtonLabel icon={<RefreshIcon/>}>Sync Scenes & Sources</ButtonLabel>
+                      </button>
                     </div>
 
-                    <CollapsibleSection title="Scenes" open={scenesOpen} onToggle={setScenesOpen}>
+                    <CollapsibleSection title="Scene Mapping" open={scenesOpen} onToggle={setScenesOpen}>
                       <div className="mapping-toolbar">
                         <label className="check-row">
                           <input
@@ -648,7 +706,12 @@ function App() {
                           <span>VTuber Source</span>
                           <span>PNG Tuber Source</span>
                         </div>
-                        {(draft.sceneMappings || []).length === 0 && <div className="empty-row">Sync OBS to load scenes</div>}
+                        {(draft.sceneMappings || []).length === 0 && (
+                          <EmptyStateRow
+                            title="No scenes loaded yet"
+                            body="Sync OBS to load your scenes, then map the VTuber and PNG sources you want TuberSwitch to manage."
+                          />
+                        )}
                         {visibleSceneMappings.map(({mapping, index}) => {
                           const sources = inventory.sourcesByScene?.[mapping.scene] || [];
                           const missingSource = mapping.enabled && (!mapping.vtuberSource || !mapping.pngTuberSource);
@@ -686,9 +749,13 @@ function App() {
               )}
 
               {settingsTab === 'twitch' && (
-                <section className="settings-panel">
-                  <div className="settings-column">
-                    <h2>Twitch Settings</h2>
+                <section className="settings-panel twitch-settings-panel">
+                  <div className="settings-column settings-workspace">
+                    <div className="settings-section-head">
+                      <span className="panel-eyebrow">Twitch integration</span>
+                      <h2>Twitch settings</h2>
+                      <p>Authenticate once, keep rewards synced, and decide how your startup mode should behave between sessions.</p>
+                    </div>
                     <div className="form-grid">
                       <TextInput
                         label="Twitch Client ID"
@@ -702,6 +769,8 @@ function App() {
                         type="password"
                         value={draft.twitch.clientId}
                         placeholder="Enter Twitch Client ID"
+                        invalid={twitchClientIdInvalid}
+                        helpText="Required before Twitch login or reward refresh can work."
                         onChange={(value) => setDraft({...draft, twitch: {...draft.twitch, clientId: value}})}
                       />
                       <label className="check-row">
@@ -725,9 +794,15 @@ function App() {
                       Authenticated Channel: <strong>{draft.twitch.channelName || 'Not connected'}</strong>
                     </div>
                     <div className="button-row">
-                      <button onClick={saveSettings} disabled={!!busy}>Save</button>
-                      <button onClick={() => saveThen('Logging in', () => StartTwitchLogin() as unknown as Promise<ActionResult>)} disabled={!!busy}>Login with Twitch</button>
-                      <button onClick={() => saveThen('Refreshing rewards', () => RefreshTwitchRewards() as unknown as Promise<ActionResult>)} disabled={!!busy}>Refresh Rewards</button>
+                      <button className="icon-only-button" onClick={saveSettings} disabled={!!busy} aria-label="Save Twitch settings" title="Save Twitch settings">
+                        <SaveIcon/>
+                      </button>
+                      <button onClick={() => saveThen('Logging in', () => StartTwitchLogin() as unknown as Promise<ActionResult>)} disabled={!!busy}>
+                        <ButtonLabel icon={<LaunchIcon/>}>Login with Twitch</ButtonLabel>
+                      </button>
+                      <button onClick={() => saveThen('Refreshing rewards', () => RefreshTwitchRewards() as unknown as Promise<ActionResult>)} disabled={!!busy}>
+                        <ButtonLabel icon={<RefreshIcon/>}>Refresh Rewards</ButtonLabel>
+                      </button>
                     </div>
 
                     <CollapsibleSection title="Create Reward" open={createRewardOpen} onToggle={setCreateRewardOpen}>
@@ -735,7 +810,9 @@ function App() {
                         <TextInput label="New Reward Name" value={newRewardTitle} onChange={setNewRewardTitle}/>
                         <NumberInput label="Cost" value={newRewardCost} onChange={setNewRewardCost}/>
                         <TextInput label="Prompt (optional)" value={newRewardPrompt} onChange={setNewRewardPrompt}/>
-                        <button onClick={createReward} disabled={!!busy || !newRewardTitle.trim()}>Create Reward</button>
+                        <button className="highlight-button" onClick={createReward} disabled={!!busy || !newRewardTitle.trim()}>
+                          <ButtonLabel icon={<PlusIcon/>}>Create Reward</ButtonLabel>
+                        </button>
                       </div>
                     </CollapsibleSection>
 
@@ -745,7 +822,12 @@ function App() {
                           <span>Reward Name</span>
                           <span>3D Only</span>
                         </div>
-                        {manageableRewards.length === 0 && <div className="empty-row">No manageable rewards loaded</div>}
+                        {manageableRewards.length === 0 && (
+                          <EmptyStateRow
+                            title="No manageable rewards loaded"
+                            body="Refresh rewards after Twitch login to load rewards created by this client ID."
+                          />
+                        )}
                         {manageableRewards.map((reward) => (
                           <label className="reward-row" key={reward.id}>
                             <span>{reward.title}</span>
@@ -761,7 +843,12 @@ function App() {
                           <span>Reward Name</span>
                           <span>Status</span>
                         </div>
-                        {unmanageableRewards.length === 0 && <div className="empty-row">No unmanageable rewards loaded</div>}
+                        {unmanageableRewards.length === 0 && (
+                          <EmptyStateRow
+                            title="No read-only rewards loaded"
+                            body="If Twitch returns rewards that this app did not create, they will appear here as read-only."
+                          />
+                        )}
                         {unmanageableRewards.map((reward) => (
                           <div className="reward-row readonly" key={reward.id}>
                             <span>{reward.title}</span>
@@ -806,11 +893,12 @@ function ConnectionStatus({label, connected}: {label: string; connected: boolean
   );
 }
 
-function TextInput({label, value, onChange, type = 'text', info, placeholder}: {label: string; value: string; onChange: (value: string) => void; type?: string; info?: ReactNode; placeholder?: string}) {
+function TextInput({label, value, onChange, type = 'text', info, placeholder, helpText, invalid}: {label: string; value: string; onChange: (value: string) => void; type?: string; info?: ReactNode; placeholder?: string; helpText?: string; invalid?: boolean}) {
   return (
     <label>
       <FieldLabel text={label} info={info}/>
-      <input type={type} value={value || ''} placeholder={placeholder} onChange={(event) => onChange(event.currentTarget.value)}/>
+      <input className={invalid ? 'field-control invalid' : 'field-control'} aria-invalid={invalid || undefined} type={type} value={value || ''} placeholder={placeholder} onChange={(event) => onChange(event.currentTarget.value)}/>
+      {helpText && <span className="field-help">{helpText}</span>}
     </label>
   );
 }
@@ -837,18 +925,23 @@ function ProcessNameField({
         <input type="text" value={value || ''} onChange={(event) => onChange(event.currentTarget.value)}/>
       </label>
       <div className="process-input-actions">
-        <button type="button" className="process-action-button" onClick={onSelectRunningApp}>Select Running App</button>
-        <button type="button" className="process-action-button" onClick={onBrowseExecutable}>Browse Executable</button>
+        <button type="button" className="process-action-button" onClick={onSelectRunningApp}>
+          <ButtonLabel icon={<ListIcon/>}>Select Running App</ButtonLabel>
+        </button>
+        <button type="button" className="process-action-button" onClick={onBrowseExecutable}>
+          <ButtonLabel icon={<FolderIcon/>}>Browse Executable</ButtonLabel>
+        </button>
       </div>
     </div>
   );
 }
 
-function NumberInput({label, value, onChange, info, min}: {label: string; value: number; onChange: (value: number) => void; info?: ReactNode; min?: number}) {
+function NumberInput({label, value, onChange, info, min, helpText, invalid}: {label: string; value: number; onChange: (value: number) => void; info?: ReactNode; min?: number; helpText?: string; invalid?: boolean}) {
   return (
     <label>
       <FieldLabel text={label} info={info}/>
-      <input type="number" min={min} value={value || 0} onChange={(event) => onChange(Number(event.currentTarget.value))}/>
+      <input className={invalid ? 'field-control invalid' : 'field-control'} aria-invalid={invalid || undefined} type="number" min={min} value={value || 0} onChange={(event) => onChange(Number(event.currentTarget.value))}/>
+      {helpText && <span className="field-help">{helpText}</span>}
     </label>
   );
 }
@@ -871,6 +964,8 @@ function SourceSelect({label, value, sources, onChange}: {label: string; value: 
     <label>
       <FieldLabel text={label}/>
       <select
+        className={!value ? 'field-control invalid' : 'field-control'}
+        aria-invalid={!value || undefined}
         value={value || ''}
         onChange={(event) => {
           const source = sources.find((item) => item.name === event.currentTarget.value);
@@ -880,7 +975,26 @@ function SourceSelect({label, value, sources, onChange}: {label: string; value: 
         <option value="">Select...</option>
         {values.map((source) => <option key={`${source.name}-${source.sceneItemId}`} value={source.name}>{source.name}</option>)}
       </select>
+      {!value && <span className="field-help">Select a source so this scene can switch cleanly.</span>}
     </label>
+  );
+}
+
+function EmptyStateRow({title, body}: {title: string; body: string}) {
+  return (
+    <div className="empty-row">
+      <strong>{title}</strong>
+      <span>{body}</span>
+    </div>
+  );
+}
+
+function ButtonLabel({icon, children}: {icon: ReactNode; children: ReactNode}) {
+  return (
+    <span className="button-label">
+      <span className="button-icon" aria-hidden="true">{icon}</span>
+      <span>{children}</span>
+    </span>
   );
 }
 
@@ -990,7 +1104,9 @@ function ProcessPickerDialog({
             <h3 id="process-picker-title">{title}</h3>
             <p>Select a running process to copy its executable name into this field.</p>
           </div>
-          <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="secondary" onClick={onClose}>
+            <ButtonLabel icon={<CloseIcon/>}>Cancel</ButtonLabel>
+          </button>
         </div>
         <div className="process-picker-toolbar">
           <label>
@@ -1042,7 +1158,9 @@ function ProcessPickerDialog({
             />
             <span>Hide helpers and utilities</span>
           </label>
-          <button type="button" className="secondary" onClick={() => void loadProcesses(options)} disabled={loading}>Refresh</button>
+          <button type="button" className="secondary" onClick={() => void loadProcesses(options)} disabled={loading}>
+            <ButtonLabel icon={<RefreshIcon/>}>Refresh</ButtonLabel>
+          </button>
         </div>
         {loading && <div className="process-picker-state">Loading running processes...</div>}
         {error && <div className="process-picker-state error">{error}</div>}
@@ -1066,12 +1184,60 @@ function ProcessPickerDialog({
           </div>
         )}
         <div className="button-row process-picker-actions">
-          <button type="button" onClick={() => selectedProcess && onSelect(selectedProcess)} disabled={!selectedProcess}>Select</button>
-          <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+          <button type="button" onClick={() => selectedProcess && onSelect(selectedProcess)} disabled={!selectedProcess}>
+            <ButtonLabel icon={<CheckIcon/>}>Select</ButtonLabel>
+          </button>
+          <button type="button" className="secondary" onClick={onClose}>
+            <ButtonLabel icon={<CloseIcon/>}>Cancel</ButtonLabel>
+          </button>
         </div>
       </section>
     </div>
   );
+}
+
+function iconPath(path: string) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d={path} />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return iconPath('M6.7 1.6h2.6l.4 1.7a4.9 4.9 0 0 1 1.1.6l1.6-.8 1.3 2.2-1.3 1.1c.1.4.1.8.1 1.2s0 .8-.1 1.2l1.3 1.1-1.3 2.2-1.6-.8c-.3.2-.7.4-1.1.6l-.4 1.7H6.7l-.4-1.7a4.9 4.9 0 0 1-1.1-.6l-1.6.8-1.3-2.2 1.3-1.1A5.7 5.7 0 0 1 3.5 8c0-.4 0-.8.1-1.2L2.3 5.7 3.6 3.5l1.6.8c.3-.2.7-.4 1.1-.6l.4-1.7ZM8 10.3A2.3 2.3 0 1 0 8 5.7a2.3 2.3 0 0 0 0 4.6Z');
+}
+
+function SaveIcon() {
+  return iconPath('M2.5 2.5h8.8l2.2 2.2v8.8H2.5v-11Zm2 0v3h5v-3m-4 11V9.6h5v3.9');
+}
+
+function RefreshIcon() {
+  return iconPath('M12.6 4.9A5.4 5.4 0 1 0 13.3 10M12.6 4.9V2.7m0 2.2H10.4');
+}
+
+function LaunchIcon() {
+  return iconPath('M6.1 3h6.9v6.9M13 3 7 9m-2.5-4.5H3.5v8h8V11');
+}
+
+function PlusIcon() {
+  return iconPath('M8 3v10M3 8h10');
+}
+
+function ListIcon() {
+  return iconPath('M5.5 4h7M5.5 8h7M5.5 12h7M3 4h.01M3 8h.01M3 12h.01');
+}
+
+function FolderIcon() {
+  return iconPath('M2.5 4.5h3l1.2 1.4h6.8v5.6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z');
+}
+
+function CloseIcon() {
+  return iconPath('M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5');
+}
+
+function CheckIcon() {
+  return iconPath('M3.5 8.2 6.6 11 12.5 5');
 }
 
 function buildSettingsInput(config: Config, obsPassword: string, updateObsPassword: boolean): SettingsInput {

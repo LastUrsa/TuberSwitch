@@ -18,10 +18,10 @@ func main() {
 	// Create application with options
 	err := wails.Run(&options.App{
 		Title:  "TuberSwitch",
-		Width:  760,
-		Height: 460,
-		MinWidth: 680,
-		MinHeight: 420,
+		Width:  920,
+		Height: 580,
+		MinWidth: 860,
+		MinHeight: 540,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

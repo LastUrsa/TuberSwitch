@@ -39,7 +39,7 @@ Development:
 2. Enter the OBS host, port, and password.
 3. Click `Save`, then `Sync Scenes & Sources`.
 4. Configure the `VTuber Source` and `PNG Tuber Source` for the scenes you want managed.
-5. Open `Settings > Twitch Settings`.
+5. Open `Settings > Twitch`.
 6. Enter the Twitch Client ID.
 7. Click `Save`, then `Login with Twitch`.
 8. Complete device activation in the browser.
@@ -52,6 +52,12 @@ Optional:
 12. Enable `App Detection`.
 13. Configure at least one process name.
 14. Save the settings.
+
+UI notes:
+
+- the main shell uses an icon-only gear button to open Settings
+- each settings workspace uses an icon-only save button with an accessible label
+- the General tab includes an About card with the current app version
 
 ## App Detection
 
@@ -79,6 +85,13 @@ Core desktop app code is split by responsibility:
 - `app.go` wires the app, shared interfaces, and lifecycle hooks
 - `app_runtime.go` contains runtime state and mode-switch orchestration
 - `app_integrations.go` contains OBS, Twitch, update, and secret-management integrations
+
+The current frontend aligns with the Starsong compact utility shell used across sibling apps:
+
+- compact branded header with live connection status
+- focused mode card for the primary switch action
+- settings workspace split into `General`, `OBS`, and `Twitch` tabs
+- restrained gold highlight usage reserved for emphasized release and creation actions
 
 Install frontend dependencies:
 
@@ -122,6 +135,7 @@ npm run test:coverage
 npm run build
 cd ..
 go test ./... -cover
+wails build
 ```
 
 Security pass commands:
