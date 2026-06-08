@@ -74,6 +74,12 @@ The running-app picker filters aggressively by default to reduce noise, includin
 
 ## Development
 
+Core desktop app code is split by responsibility:
+
+- `app.go` wires the app, shared interfaces, and lifecycle hooks
+- `app_runtime.go` contains runtime state and mode-switch orchestration
+- `app_integrations.go` contains OBS, Twitch, update, and secret-management integrations
+
 Install frontend dependencies:
 
 ```powershell
@@ -117,6 +123,17 @@ npm run build
 cd ..
 go test ./... -cover
 ```
+
+Security pass commands:
+
+```powershell
+cd frontend
+npm audit
+cd ..
+govulncheck ./...
+```
+
+If `govulncheck` reports standard-library vulnerabilities, upgrade to a patched Go toolchain before shipping. As of June 2026, the fixes for the current reachable findings are in Go `1.25.11+` and Go `1.26.4+`.
 
 ## Local Files
 
