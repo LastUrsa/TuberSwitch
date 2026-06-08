@@ -45,6 +45,8 @@ type persistedConfig struct {
 	SceneMappings           []SceneMapping     `json:"sceneMappings"`
 	Twitch                  persistedTwitch    `json:"twitch"`
 	RewardMappings          []RewardMapping    `json:"rewardMappings"`
+	Profiles                []Profile          `json:"profiles"`
+	ActiveProfileID         string             `json:"activeProfileId"`
 	ModeProfiles            []ModeProfile      `json:"modeProfiles"`
 	StartupMode             StartupMode        `json:"startupMode"`
 	CurrentMode             Mode               `json:"currentMode"`
@@ -79,6 +81,8 @@ func toPersistedConfig(cfg Config) persistedConfig {
 			ChannelName: cfg.Twitch.ChannelName,
 		},
 		RewardMappings:          cfg.RewardMappings,
+		Profiles:                cfg.Profiles,
+		ActiveProfileID:         cfg.ActiveProfileID,
 		ModeProfiles:            cfg.ModeProfiles,
 		StartupMode:             cfg.StartupMode,
 		CurrentMode:             cfg.CurrentMode,

@@ -7,7 +7,7 @@ function getToggleButton(label: string) {
   return screen.getAllByRole('button').find((button) => button.textContent?.includes(label)) as HTMLButtonElement;
 }
 
-function getSettingsTab(name: 'General' | 'OBS' | 'Twitch') {
+function getSettingsTab(name: 'General' | 'Connections' | 'Profiles' | 'About') {
   return screen.getByRole('tab', {name: new RegExp(`^${name}`, 'i')});
 }
 
@@ -20,6 +20,28 @@ const mockStatus = {
       {scene: 'BRB', enabled: false, vtuberSource: '', vtuberItemId: 0, pngTuberSource: '', pngTuberItemId: 0},
     ],
     twitch: {clientId: 'client', channelId: 'channel', channelName: 'Streamer'},
+    rewardMappings: [
+      {rewardId: 'manageable', rewardName: 'Dance', is3DOnly: true, manageable: true},
+      {rewardId: 'readonly', rewardName: 'Hydrate', is3DOnly: false, manageable: false},
+    ],
+    profiles: [
+      {
+        id: 'default',
+        name: 'Default',
+        mode: 'PNG',
+        sources: {scene: '', vtuberSource: '', vtuberItemId: 0, pngTuberSource: '', pngTuberItemId: 0},
+        sceneMappings: [
+          {scene: 'Main', enabled: true, vtuberSource: 'VTuber', vtuberItemId: 10, pngTuberSource: '', pngTuberItemId: 0},
+          {scene: 'BRB', enabled: false, vtuberSource: '', vtuberItemId: 0, pngTuberSource: '', pngTuberItemId: 0},
+        ],
+        rewardMappings: [
+          {rewardId: 'manageable', rewardName: 'Dance', is3DOnly: true, manageable: true},
+          {rewardId: 'readonly', rewardName: 'Hydrate', is3DOnly: false, manageable: false},
+        ],
+        lastUsed: '',
+      },
+    ],
+    activeProfileId: 'default',
     modeProfiles: [],
     startupMode: 'restore-last',
     currentMode: 'PNG',
@@ -35,7 +57,7 @@ const mockStatus = {
     },
   },
   currentMode: 'PNG',
-  currentModeLabel: 'PNG VTuber Mode',
+  currentModeLabel: 'PNGTuber Mode',
   obsConnected: true,
   twitchConnected: true,
   lastAction: 'Ready',
@@ -74,7 +96,11 @@ const api = vi.hoisted(() => ({
   GetTwitchRewards: vi.fn(),
   ListRunningProcesses: vi.fn(),
   RefreshTwitchRewards: vi.fn(),
+  DeleteProfile: vi.fn(),
   SaveConfig: vi.fn(),
+  SaveProfile: vi.fn(),
+  SaveProfileAs: vi.fn(),
+  SelectProfile: vi.fn(),
   SetReward3DOnly: vi.fn(),
   StartTwitchLogin: vi.fn(),
   SyncOBS: vi.fn(),
@@ -115,6 +141,10 @@ beforeEach(() => {
     {processName: 'BackgroundAvatarHelper.exe', pid: 6000},
   ]);
   api.BrowseExecutable.mockResolvedValue('AvatarApp.exe');
+  api.DeleteProfile.mockResolvedValue(actionResult());
+  api.SaveProfile.mockImplementation(async (input) => actionResult({...mockStatus, config: input.config}));
+  api.SaveProfileAs.mockImplementation(async (_name, input) => actionResult({...mockStatus, config: input.config}));
+  api.SelectProfile.mockResolvedValue(actionResult());
   api.SetReward3DOnly.mockResolvedValue(actionResult());
   api.CreateTwitchReward.mockResolvedValue(actionResult());
   api.ApplyMode.mockResolvedValue(actionResult({...mockStatus, currentMode: '3D', currentModeLabel: '3D VTuber Mode'}));
@@ -135,11 +165,41 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', {name: /Switch to 3D VTuber mode/i}));
 
     await waitFor(() => expect(api.ApplyMode).toHaveBeenCalledWith('3D'));
-    expect(await screen.findByRole('button', {name: /Switch to PNG VTuber mode/i})).toBeInTheDocument();
-    expect(screen.getByText('3D live now')).toBeInTheDocument();
+    expect(await screen.findByRole('button', {name: /Switch to PNGTuber mode/i})).toBeInTheDocument();
+    expect(screen.queryByText('3D live now')).not.toBeInTheDocument();
   });
 
-  it('checks for updates from the General tab and shows the releases action when an update is available', async () => {
+  it('can change profiles directly from the main screen after a manual mode switch', async () => {
+    const statusWithProfiles = structuredClone(mockStatus);
+    statusWithProfiles.config.profiles.push({
+      id: 'gaming',
+      name: 'Gaming Stream',
+      mode: '3D',
+      sources: {scene: '', vtuberSource: '', vtuberItemId: 0, pngTuberSource: '', pngTuberItemId: 0},
+      sceneMappings: [],
+      rewardMappings: [],
+      lastUsed: '',
+    });
+    api.GetStatus.mockResolvedValue(statusWithProfiles);
+    const switchedStatus = structuredClone(statusWithProfiles);
+    switchedStatus.currentMode = '3D';
+    switchedStatus.currentModeLabel = '3D VTuber Mode';
+    switchedStatus.config.currentMode = '3D';
+    api.ApplyMode.mockResolvedValue(actionResult(switchedStatus));
+
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: /Switch to 3D VTuber mode/i}));
+    await waitFor(() => expect(api.ApplyMode).toHaveBeenCalledWith('3D'));
+    await userEvent.selectOptions(screen.getByRole('combobox', {name: 'Active profile'}), 'gaming');
+
+    await waitFor(() => expect(api.SelectProfile).toHaveBeenCalledWith('gaming'));
+    expect(screen.queryByRole('dialog', {name: 'Unsaved Profile Changes'})).not.toBeInTheDocument();
+    expect(api.SaveProfile).not.toHaveBeenCalled();
+  });
+
+  it('checks for updates from the About tab and shows the releases action when an update is available', async () => {
     api.CheckForUpdates.mockResolvedValueOnce({
       currentVersion: '0.4.0',
       latestVersion: '0.4.1',
@@ -152,6 +212,7 @@ describe('App', () => {
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('About'));
     await userEvent.click(screen.getByRole('button', {name: 'Check for Updates'}));
 
     await waitFor(() => expect(api.CheckForUpdates).toHaveBeenCalledTimes(1));
@@ -171,7 +232,7 @@ describe('App', () => {
     await userEvent.clear(screen.getByLabelText(/Detection Interval \(seconds\)/i));
     await userEvent.type(screen.getByLabelText(/Detection Interval \(seconds\)/i), '7');
     await userEvent.selectOptions(screen.getByLabelText('Conflict Behavior'), 'prefer-3d');
-    await userEvent.click(screen.getByRole('button', {name: 'Save settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Save general settings'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
@@ -224,6 +285,34 @@ describe('App', () => {
     expect(await screen.findByRole('option', {name: /chrome\.exe \(PID 999\)/i})).toBeInTheDocument();
   });
 
+  it('refreshes the running app picker with updated system-process filters', async () => {
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(screen.getAllByRole('button', {name: 'Select Running App'})[0]);
+    await screen.findByText('Select 3D Mode Process');
+    await userEvent.click(screen.getByLabelText('Hide system processes'));
+    await userEvent.click(screen.getByRole('button', {name: 'Refresh'}));
+
+    await waitFor(() => expect(api.ListRunningProcesses).toHaveBeenLastCalledWith(expect.objectContaining({
+      hideSystemProcesses: false,
+    })));
+  });
+
+  it('shows process picker errors without closing the dialog', async () => {
+    api.ListRunningProcesses.mockRejectedValueOnce(new Error('process list failed'));
+
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(screen.getAllByRole('button', {name: 'Select Running App'})[0]);
+
+    expect(await screen.findByText('Error: process list failed')).toBeInTheDocument();
+    expect(screen.getByText('Select 3D Mode Process')).toBeInTheDocument();
+  });
+
   it('can show helper and utility apps when that filter is disabled', async () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
@@ -251,6 +340,37 @@ describe('App', () => {
     expect(await screen.findByRole('option', {name: /backgroundavatarhelper\.exe \(PID 6000\)/i})).toBeInTheDocument();
   });
 
+  it('orders main profile choices with default first, then names alphabetically', async () => {
+    const statusWithProfiles = structuredClone(mockStatus);
+    statusWithProfiles.config.profiles.push(
+      {
+        id: 'zed',
+        name: 'Zed Stream',
+        mode: 'PNG',
+        sources: {scene: '', vtuberSource: '', vtuberItemId: 0, pngTuberSource: '', pngTuberItemId: 0},
+        sceneMappings: [],
+        rewardMappings: [],
+        lastUsed: '',
+      },
+      {
+        id: 'alpha',
+        name: 'Alpha Stream',
+        mode: 'PNG',
+        sources: {scene: '', vtuberSource: '', vtuberItemId: 0, pngTuberSource: '', pngTuberItemId: 0},
+        sceneMappings: [],
+        rewardMappings: [],
+        lastUsed: '',
+      },
+    );
+    api.GetStatus.mockResolvedValue(statusWithProfiles);
+
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    const options = within(screen.getByRole('combobox', {name: 'Active profile'})).getAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual(['Default', 'Alpha Stream', 'Zed Stream']);
+  });
+
   it('keeps an in-progress settings draft when the background status refresh runs', async () => {
     const user = userEvent.setup();
 
@@ -259,7 +379,7 @@ describe('App', () => {
     await screen.findByText('TuberSwitch');
 
     await user.click(screen.getByRole('button', {name: 'Open settings'}));
-    await user.click(getSettingsTab('OBS'));
+    await user.click(getSettingsTab('Connections'));
     const hostInput = screen.getByLabelText(/OBS WebSocket Host/i);
     await user.clear(hostInput);
     await user.type(hostInput, 'draft-host');
@@ -284,6 +404,7 @@ describe('App', () => {
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('About'));
     await userEvent.click(screen.getByRole('button', {name: 'Check for Updates'}));
 
     expect(await screen.findByText('Update check failed: Error: network down')).toBeInTheDocument();
@@ -294,8 +415,7 @@ describe('App', () => {
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
-    await userEvent.click(getSettingsTab('Twitch'));
+    await userEvent.click(getSettingsTab('Profiles'));
 
     const manageable = getToggleButton('Manageable Rewards').parentElement as HTMLElement;
     expect(within(manageable).getByText('Dance')).toBeInTheDocument();
@@ -313,9 +433,9 @@ describe('App', () => {
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Profiles'));
 
-    const warning = screen.getByTitle('Only selected sources in this scene will be toggled');
+    const warning = screen.getByTitle('Choose the source this profile should enable in this scene');
     expect(warning).toHaveTextContent('!');
     expect(screen.getByText('Main')).toBeInTheDocument();
   });
@@ -325,7 +445,7 @@ describe('App', () => {
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Profiles'));
     expect(screen.getByText('BRB')).toBeInTheDocument();
 
     await userEvent.click(screen.getByLabelText('Show only selected scenes'));
@@ -338,8 +458,7 @@ describe('App', () => {
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
-    await userEvent.click(getSettingsTab('Twitch'));
+    await userEvent.click(getSettingsTab('Profiles'));
     await userEvent.click(getToggleButton('Create Reward'));
     const createRewardSection = getToggleButton('Create Reward').parentElement as HTMLElement;
     await userEvent.type(within(createRewardSection).getByLabelText(/New Reward Name/i), 'Throw Tomato');
@@ -356,11 +475,11 @@ describe('App', () => {
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Connections'));
     const hostInput = screen.getByLabelText(/OBS WebSocket Host/i);
     await userEvent.clear(hostInput);
     await userEvent.type(hostInput, 'obs-machine');
-    await userEvent.click(screen.getByRole('button', {name: 'Save OBS settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Save connection settings'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
@@ -372,21 +491,20 @@ describe('App', () => {
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Profiles'));
     await userEvent.click(screen.getByRole('button', {name: 'Sync Scenes & Sources'}));
 
-    await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
+    await waitFor(() => expect(api.SaveProfile).toHaveBeenCalled());
     await waitFor(() => expect(api.SyncOBS).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.GetOBSInventory).toHaveBeenLastCalledWith('Main'));
   });
 
-  it('saves Twitch settings before starting login', async () => {
+  it('saves Twitch connection settings before starting login', async () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
-    await userEvent.click(getSettingsTab('Twitch'));
+    await userEvent.click(getSettingsTab('Connections'));
     const clientIdInput = screen.getByLabelText(/Twitch Client ID/i);
     await userEvent.clear(clientIdInput);
     await userEvent.type(clientIdInput, 'new-client-id');
@@ -398,17 +516,37 @@ describe('App', () => {
     await waitFor(() => expect(api.StartTwitchLogin).toHaveBeenCalledTimes(1));
   });
 
-  it('updates 3D-only reward selection through the backend binding', async () => {
+  it('updates enabled reward selection through the backend binding', async () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
-    await userEvent.click(getSettingsTab('Twitch'));
+    await userEvent.click(getSettingsTab('Profiles'));
+    expect(screen.getByText('Enabled')).toBeInTheDocument();
+    expect(screen.queryByText('3D Only')).not.toBeInTheDocument();
     const manageable = getToggleButton('Manageable Rewards').parentElement as HTMLElement;
     await userEvent.click(within(manageable).getByRole('checkbox'));
 
     await waitFor(() => expect(api.SetReward3DOnly).toHaveBeenCalledWith('manageable', false));
+  });
+
+  it('uses an in-app dialog when saving a profile as a new profile', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockImplementation(() => 'Browser prompt should not open');
+
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('Profiles'));
+    await userEvent.click(screen.getByRole('button', {name: 'Save As'}));
+
+    expect(promptSpy).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog', {name: 'Save Profile As'});
+    await userEvent.type(within(dialog).getByLabelText('Profile Name'), 'Cozy Stream');
+    await userEvent.click(within(dialog).getByRole('button', {name: 'Save'}));
+
+    await waitFor(() => expect(api.SaveProfileAs).toHaveBeenCalledWith('Cozy Stream', expect.anything()));
+    promptSpy.mockRestore();
   });
 
   it('shows backend validation errors returned from save operations', async () => {
@@ -418,22 +556,20 @@ describe('App', () => {
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
-    await userEvent.click(screen.getByRole('button', {name: 'Save OBS settings'}));
+    await userEvent.click(getSettingsTab('Connections'));
+    await userEvent.click(screen.getByRole('button', {name: 'Save connection settings'}));
 
     expect(await screen.findByText('OBS password is required')).toBeInTheDocument();
     expect(api.SyncOBS).not.toHaveBeenCalled();
   });
 
-  it('persists startup mode changes when saving Twitch settings', async () => {
+  it('persists startup mode changes when saving general settings', async () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
-    await userEvent.click(getSettingsTab('Twitch'));
     await userEvent.selectOptions(screen.getByLabelText('Startup Mode'), 'always-3d');
-    await userEvent.click(screen.getByRole('button', {name: 'Save Twitch settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Save general settings'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
@@ -445,79 +581,132 @@ describe('App', () => {
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
-    await userEvent.click(getSettingsTab('Twitch'));
+    await userEvent.click(getSettingsTab('Connections'));
     await userEvent.click(screen.getByRole('button', {name: 'Refresh Rewards'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     await waitFor(() => expect(api.RefreshTwitchRewards).toHaveBeenCalledTimes(1));
   });
 
-  it('persists the refresh-on-startup setting when saving Twitch settings', async () => {
+  it('persists the refresh-on-startup setting when saving connection settings', async () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
-    await userEvent.click(getSettingsTab('Twitch'));
+    await userEvent.click(getSettingsTab('Connections'));
     await userEvent.click(screen.getByLabelText('Refresh Twitch rewards on startup'));
-    await userEvent.click(screen.getByRole('button', {name: 'Save Twitch settings'}));
+    await userEvent.click(screen.getByRole('button', {name: 'Save connection settings'}));
 
     await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
     const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
     expect(savedConfig.config.refreshRewardsOnStartup).toBe(true);
   });
 
-  it('saves selected scene sources with their OBS scene item ids', async () => {
+  it('saves the selected desired scene source with its OBS scene item id', async () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Profiles'));
     await userEvent.click(screen.getByRole('button', {name: 'Sync Scenes & Sources'}));
     await waitFor(() => expect(api.GetOBSInventory).toHaveBeenLastCalledWith('Main'));
+    expect(screen.queryByText('Selected a source')).not.toBeInTheDocument();
     const mainSceneRow = screen.getByText('Main').closest('.scene-mapping-row') as HTMLElement;
-    const mainSceneSelects = within(mainSceneRow).getAllByRole('combobox');
-    await userEvent.selectOptions(mainSceneSelects[1], 'PNG');
-    await userEvent.click(screen.getByRole('button', {name: 'Save OBS settings'}));
+    await userEvent.selectOptions(within(mainSceneRow).getByRole('combobox', {name: 'Desired Source'}), 'PNG');
+    await userEvent.click(screen.getByRole('button', {name: 'Save profile'}));
 
-    await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
-    const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
+    await waitFor(() => expect(api.SaveProfile).toHaveBeenCalled());
+    const savedConfig = api.SaveProfile.mock.calls.at(-1)?.[0];
     expect(savedConfig.config.sceneMappings[0].pngTuberSource).toBe('PNG');
     expect(savedConfig.config.sceneMappings[0].pngTuberItemId).toBe(11);
   });
 
-  it('enables a scene when a VTuber source is selected', async () => {
+  it('toggles whether a scene is used by the active profile', async () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Profiles'));
+    const mainSceneRow = screen.getByText('Main').closest('.scene-mapping-row') as HTMLElement;
+    await userEvent.click(within(mainSceneRow).getByRole('checkbox'));
+    await userEvent.click(screen.getByRole('button', {name: 'Save profile'}));
+
+    await waitFor(() => expect(api.SaveProfile).toHaveBeenCalled());
+    const savedConfig = api.SaveProfile.mock.calls.at(-1)?.[0];
+    expect(savedConfig.config.sceneMappings[0].enabled).toBe(false);
+  });
+
+  it('enables a scene when a desired source is selected', async () => {
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('Profiles'));
     await userEvent.click(screen.getByRole('button', {name: 'Sync Scenes & Sources'}));
     await waitFor(() => expect(api.GetOBSInventory).toHaveBeenLastCalledWith('Main'));
     const brbSceneRow = screen.getByText('BRB').closest('.scene-mapping-row') as HTMLElement;
-    const brbSceneSelects = within(brbSceneRow).getAllByRole('combobox');
-    await userEvent.selectOptions(brbSceneSelects[0], 'PNG BRB');
-    await userEvent.click(screen.getByRole('button', {name: 'Save OBS settings'}));
+    await userEvent.selectOptions(within(brbSceneRow).getByRole('combobox', {name: 'Desired Source'}), 'PNG BRB');
+    await userEvent.click(screen.getByRole('button', {name: 'Save profile'}));
 
-    await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
-    const savedConfig = api.SaveConfig.mock.calls.at(-1)?.[0];
+    await waitFor(() => expect(api.SaveProfile).toHaveBeenCalled());
+    const savedConfig = api.SaveProfile.mock.calls.at(-1)?.[0];
     expect(savedConfig.config.sceneMappings[1].enabled).toBe(true);
-    expect(savedConfig.config.sceneMappings[1].vtuberSource).toBe('PNG BRB');
-    expect(savedConfig.config.sceneMappings[1].vtuberItemId).toBe(20);
+    expect(savedConfig.config.sceneMappings[1].pngTuberSource).toBe('PNG BRB');
+    expect(savedConfig.config.sceneMappings[1].pngTuberItemId).toBe(20);
   });
 
-  it('validates OBS settings before syncing scenes and sources', async () => {
-    api.SaveConfig.mockResolvedValueOnce(actionError('OBS password is required'));
+  it('shows an empty state when a profile has no scene mappings', async () => {
+    const statusWithoutScenes = structuredClone(mockStatus);
+    statusWithoutScenes.config.sceneMappings = [];
+    statusWithoutScenes.config.profiles[0].sceneMappings = [];
+    api.GetStatus.mockResolvedValue(statusWithoutScenes);
 
     render(<App/>);
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
-    await userEvent.click(getSettingsTab('OBS'));
+    await userEvent.click(getSettingsTab('Profiles'));
+
+    expect(screen.getByText('No scenes loaded yet')).toBeInTheDocument();
+  });
+
+  it('deletes non-default profiles through the in-app dialog', async () => {
+    const statusWithProfile = structuredClone(mockStatus);
+    statusWithProfile.config.activeProfileId = 'gaming';
+    statusWithProfile.config.profiles.push({
+      id: 'gaming',
+      name: 'Gaming Stream',
+      mode: '3D',
+      sources: {scene: '', vtuberSource: '', vtuberItemId: 0, pngTuberSource: '', pngTuberItemId: 0},
+      sceneMappings: [],
+      rewardMappings: [],
+      lastUsed: '',
+    });
+    api.GetStatus.mockResolvedValue(statusWithProfile);
+
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('Profiles'));
+    await userEvent.click(screen.getByRole('button', {name: 'Delete profile'}));
+    const dialog = screen.getByRole('dialog', {name: 'Delete Profile'});
+    await userEvent.click(within(dialog).getByRole('button', {name: 'Delete'}));
+
+    await waitFor(() => expect(api.DeleteProfile).toHaveBeenCalledWith('gaming'));
+  });
+
+  it('validates OBS settings before syncing scenes and sources', async () => {
+    api.SaveProfile.mockResolvedValueOnce(actionError('OBS password is required'));
+
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('Profiles'));
     await userEvent.click(screen.getByRole('button', {name: 'Sync Scenes & Sources'}));
 
-    await waitFor(() => expect(api.SaveConfig).toHaveBeenCalled());
+    await waitFor(() => expect(api.SaveProfile).toHaveBeenCalled());
     expect(api.SyncOBS).not.toHaveBeenCalled();
   });
 
@@ -539,11 +728,12 @@ describe('App', () => {
     await screen.findByText('TuberSwitch');
 
     await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('About'));
 
     expect(screen.getByRole('dialog', {name: 'Settings'})).toBeInTheDocument();
-    expect(screen.getByLabelText('About TuberSwitch')).toBeInTheDocument();
-    expect(screen.getByText('Starsong Tools utility')).toBeInTheDocument();
+    expect(screen.getByRole('heading', {name: 'About TuberSwitch'})).toBeInTheDocument();
+    expect(screen.getByText(/Starsong Tools utility/i)).toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Close settings'})).toBeInTheDocument();
-    expect(screen.getByRole('button', {name: 'Save settings'})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Check for Updates'})).toBeInTheDocument();
   });
 });

@@ -714,6 +714,276 @@ func TestSaveConfigRestartsDetectorWithUpdatedSettings(t *testing.T) {
 	}
 }
 
+func TestSaveProfileUpdatesActiveProfileSnapshot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	app := &App{
+		store:       config.NewStore(path),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
+		obs:         &fakeOBSService{},
+		cfg: config.Config{
+			OBS:             config.OBSConfig{Host: "127.0.0.1", Port: 4455},
+			ModeProfiles:    config.DefaultProfiles(),
+			CurrentMode:     config.ModePNG,
+			ActiveProfileID: config.DefaultProfileID,
+			Profiles:        []config.Profile{{ID: config.DefaultProfileID, Name: "Default", Mode: config.ModePNG}},
+		},
+	}
+
+	settings := app.settingsLocked()
+	settings.CurrentMode = config.Mode3D
+	settings.SceneMappings = []config.SceneMapping{{Scene: "Gaming", Enabled: true, VTuberSource: "VTuber"}}
+	settings.Profiles = app.cfg.Profiles
+	settings.ActiveProfileID = config.DefaultProfileID
+
+	result := app.SaveProfile(appdto.SettingsInput{Config: settings})
+	if !result.OK {
+		t.Fatalf("expected success, got %#v", result)
+	}
+	profile, ok := app.cfg.ActiveProfile()
+	if !ok {
+		t.Fatalf("active profile missing")
+	}
+	if profile.Mode != config.Mode3D || len(profile.SceneMappings) != 1 || profile.SceneMappings[0].Scene != "Gaming" {
+		t.Fatalf("profile not updated: %#v", profile)
+	}
+	if profile.LastUsed == "" {
+		t.Fatalf("expected last used timestamp")
+	}
+}
+
+func TestSaveProfileAsCreatesUniqueActiveProfile(t *testing.T) {
+	app := &App{
+		store:       config.NewStore(filepath.Join(t.TempDir(), "config.json")),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
+		obs:         &fakeOBSService{},
+		cfg: config.Config{
+			OBS:             config.OBSConfig{Host: "127.0.0.1", Port: 4455},
+			ModeProfiles:    config.DefaultProfiles(),
+			CurrentMode:     config.ModePNG,
+			ActiveProfileID: config.DefaultProfileID,
+			Profiles:        []config.Profile{{ID: config.DefaultProfileID, Name: "Default", Mode: config.ModePNG}},
+		},
+	}
+
+	settings := app.settingsLocked()
+	settings.CurrentMode = config.Mode3D
+	result := app.SaveProfileAs("Gaming Stream", appdto.SettingsInput{Config: settings})
+	if !result.OK {
+		t.Fatalf("expected success, got %#v", result)
+	}
+	if app.cfg.ActiveProfileID == config.DefaultProfileID || len(app.cfg.Profiles) != 2 {
+		t.Fatalf("profile not created: %#v active=%q", app.cfg.Profiles, app.cfg.ActiveProfileID)
+	}
+	if _, ok := app.cfg.ActiveProfile(); !ok {
+		t.Fatalf("new profile is not active")
+	}
+
+	duplicate := app.SaveProfileAs(" Gaming Stream ", appdto.SettingsInput{Config: app.settingsLocked()})
+	if duplicate.OK {
+		t.Fatalf("expected duplicate name failure")
+	}
+}
+
+func TestDuplicateAndDeleteProfileLifecycle(t *testing.T) {
+	app := &App{
+		store:       config.NewStore(filepath.Join(t.TempDir(), "config.json")),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
+		obs: &fakeOBSService{sources: map[string][]obs.Source{
+			"Default": {{Name: "PNG", SceneItemID: 1}},
+		}},
+		cfg: config.Config{
+			OBS:             config.OBSConfig{Host: "127.0.0.1", Port: 4455},
+			ModeProfiles:    config.DefaultProfiles(),
+			CurrentMode:     config.ModePNG,
+			ActiveProfileID: "gaming",
+			Profiles: []config.Profile{
+				{ID: config.DefaultProfileID, Name: "Default", Mode: config.ModePNG, SceneMappings: []config.SceneMapping{{Scene: "Default", Enabled: true, PNGTuberSource: "PNG"}}},
+				{ID: "gaming", Name: "Gaming Stream", Mode: config.Mode3D},
+			},
+		},
+	}
+
+	duplicated := app.DuplicateProfile()
+	if !duplicated.OK {
+		t.Fatalf("duplicate failed: %#v", duplicated)
+	}
+	active, _ := app.cfg.ActiveProfile()
+	if active.Name != "Gaming Stream Copy" {
+		t.Fatalf("copy name = %q", active.Name)
+	}
+	if len(app.cfg.Profiles) != 3 {
+		t.Fatalf("profiles = %#v", app.cfg.Profiles)
+	}
+
+	deleteDefault := app.DeleteProfile(config.DefaultProfileID)
+	if deleteDefault.OK {
+		t.Fatalf("expected default delete protection")
+	}
+	deleted := app.DeleteProfile(active.ID)
+	if !deleted.OK {
+		t.Fatalf("delete failed: %#v", deleted)
+	}
+	if app.cfg.ActiveProfileID != config.DefaultProfileID {
+		t.Fatalf("active profile = %q", app.cfg.ActiveProfileID)
+	}
+}
+
+func TestSelectProfileAppliesProfileConfiguration(t *testing.T) {
+	fakeOBS := &fakeOBSService{
+		sources: map[string][]obs.Source{
+			"Gaming": {{Name: "VTuber", SceneItemID: 10}, {Name: "PNG", SceneItemID: 11}},
+		},
+	}
+	fakeTwitch := &fakeTwitchService{}
+	app := &App{
+		store:       config.NewStore(filepath.Join(t.TempDir(), "config.json")),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
+		obs:         fakeOBS,
+		twitch:      fakeTwitch,
+		cfg: config.Config{
+			OBS:             config.OBSConfig{Host: "127.0.0.1", Port: 4455},
+			Twitch:          config.TwitchConfig{ClientID: "client", AccessToken: "token"},
+			ModeProfiles:    config.DefaultProfiles(),
+			CurrentMode:     config.ModePNG,
+			ActiveProfileID: config.DefaultProfileID,
+			Profiles: []config.Profile{
+				{ID: config.DefaultProfileID, Name: "Default", Mode: config.ModePNG},
+				{
+					ID:   "gaming",
+					Name: "Gaming Stream",
+					Mode: config.Mode3D,
+					SceneMappings: []config.SceneMapping{
+						{Scene: "Gaming", Enabled: true, VTuberSource: "VTuber", PNGTuberSource: "PNG"},
+					},
+					RewardMappings: []config.RewardMapping{
+						{RewardID: "dance", RewardName: "Dance", Is3DOnly: true, Manageable: true},
+					},
+				},
+			},
+		},
+	}
+
+	result := app.SelectProfile("gaming")
+	if !result.OK {
+		t.Fatalf("select failed: %#v", result)
+	}
+	if app.cfg.ActiveProfileID != "gaming" || app.cfg.CurrentMode != config.Mode3D {
+		t.Fatalf("profile/mode = %q/%q", app.cfg.ActiveProfileID, app.cfg.CurrentMode)
+	}
+	if len(app.cfg.SceneMappings) != 1 || app.cfg.SceneMappings[0].Scene != "Gaming" {
+		t.Fatalf("scene mappings = %#v", app.cfg.SceneMappings)
+	}
+	if len(app.cfg.RewardMappings) != 1 || app.cfg.RewardMappings[0].RewardID != "dance" {
+		t.Fatalf("reward mappings = %#v", app.cfg.RewardMappings)
+	}
+	if len(fakeOBS.visibilityCalls) != 2 {
+		t.Fatalf("visibility calls = %#v", fakeOBS.visibilityCalls)
+	}
+	if len(fakeTwitch.rewardCalls) != 1 || fakeTwitch.rewardCalls[0].rewardID != "dance" || !fakeTwitch.rewardCalls[0].enabled {
+		t.Fatalf("reward calls = %#v", fakeTwitch.rewardCalls)
+	}
+}
+
+func TestAppDetectionAppliesMatching3DProfile(t *testing.T) {
+	fakeOBS := &fakeOBSService{
+		sources: map[string][]obs.Source{
+			"Gaming": {{Name: "VTuber", SceneItemID: 10}},
+		},
+	}
+	app := &App{
+		store:       config.NewStore(filepath.Join(t.TempDir(), "config.json")),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
+		obs:         fakeOBS,
+		twitch:      &fakeTwitchService{},
+		cfg: config.Config{
+			OBS:             config.OBSConfig{Host: "127.0.0.1", Port: 4455},
+			ModeProfiles:    config.DefaultProfiles(),
+			CurrentMode:     config.ModePNG,
+			ActiveProfileID: "music",
+			SceneMappings:   []config.SceneMapping{{Scene: "Music", Enabled: true, PNGTuberSource: "PNG"}},
+			Profiles: []config.Profile{
+				{ID: config.DefaultProfileID, Name: "Default", Mode: config.ModePNG},
+				{ID: "music", Name: "Music Stream", Mode: config.ModePNG},
+				{
+					ID:   "gaming",
+					Name: "Gaming Stream",
+					Mode: config.Mode3D,
+					SceneMappings: []config.SceneMapping{
+						{Scene: "Gaming", Enabled: true, VTuberSource: "VTuber"},
+					},
+				},
+			},
+		},
+	}
+
+	if err := app.applyModeFromDetection(config.Mode3D, true); err != nil {
+		t.Fatalf("applyModeFromDetection: %v", err)
+	}
+	if app.cfg.CurrentMode != config.Mode3D {
+		t.Fatalf("current mode = %q", app.cfg.CurrentMode)
+	}
+	if app.cfg.ActiveProfileID != "gaming" {
+		t.Fatalf("active profile = %q", app.cfg.ActiveProfileID)
+	}
+	if len(app.cfg.SceneMappings) != 1 || app.cfg.SceneMappings[0].Scene != "Gaming" {
+		t.Fatalf("scene mappings = %#v", app.cfg.SceneMappings)
+	}
+}
+
+func TestAppDetectionAppliesMatchingPNGTuberProfile(t *testing.T) {
+	recent := time.Now().UTC().Format(time.RFC3339)
+	fakeOBS := &fakeOBSService{
+		sources: map[string][]obs.Source{
+			"Chat": {{Name: "PNG", SceneItemID: 11}},
+		},
+	}
+	app := &App{
+		store:       config.NewStore(filepath.Join(t.TempDir(), "config.json")),
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
+		obs:         fakeOBS,
+		twitch:      &fakeTwitchService{},
+		cfg: config.Config{
+			OBS:             config.OBSConfig{Host: "127.0.0.1", Port: 4455},
+			ModeProfiles:    config.DefaultProfiles(),
+			CurrentMode:     config.Mode3D,
+			ActiveProfileID: "gaming",
+			SceneMappings:   []config.SceneMapping{{Scene: "Gaming", Enabled: true, VTuberSource: "VTuber"}},
+			Profiles: []config.Profile{
+				{ID: config.DefaultProfileID, Name: "Default", Mode: config.ModePNG},
+				{
+					ID:       "chat",
+					Name:     "Chat Stream",
+					Mode:     config.ModePNG,
+					LastUsed: recent,
+					SceneMappings: []config.SceneMapping{
+						{Scene: "Chat", Enabled: true, PNGTuberSource: "PNG"},
+					},
+				},
+				{ID: "gaming", Name: "Gaming Stream", Mode: config.Mode3D},
+			},
+		},
+	}
+
+	if err := app.applyModeFromDetection(config.ModePNG, true); err != nil {
+		t.Fatalf("applyModeFromDetection: %v", err)
+	}
+	if app.cfg.CurrentMode != config.ModePNG {
+		t.Fatalf("current mode = %q", app.cfg.CurrentMode)
+	}
+	if app.cfg.ActiveProfileID != "chat" {
+		t.Fatalf("active profile = %q", app.cfg.ActiveProfileID)
+	}
+	if len(app.cfg.SceneMappings) != 1 || app.cfg.SceneMappings[0].Scene != "Chat" {
+		t.Fatalf("scene mappings = %#v", app.cfg.SceneMappings)
+	}
+}
+
 func TestRefreshRewardsReturnsErrorWhenSecureTokenSaveFails(t *testing.T) {
 	app := &App{
 		store:       config.NewStore(filepath.Join(t.TempDir(), "config.json")),
