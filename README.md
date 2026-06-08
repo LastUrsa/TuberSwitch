@@ -1,38 +1,23 @@
 # TuberSwitch
 
-TuberSwitch is a Windows desktop app for switching between a 3D VTuber source and a PNGTuber source in OBS while keeping Twitch Channel Point rewards in sync with the active mode.
+TuberSwitch is a Windows desktop app for switching OBS scenes and Twitch Channel Point rewards between 3D VTuber and PNGTuber stream profiles.
 
 Built with Wails, Go, and React.
 
-## What It Does
+## Features
 
-TuberSwitch coordinates:
-
-- OBS source visibility through OBS WebSocket v5
-- Twitch Channel Point reward availability through the Twitch Helix API
-
-Main capabilities:
-
-- one-click switching between 3D and PNG modes
-- reusable stream profiles for mode, OBS scenes, and rewards
-- per-scene desired OBS source mappings
-- Twitch reward enablement per profile
-- optional App Detection based on running process names
-- secure storage for the OBS password and Twitch tokens
+- Switch between 3D and PNGTuber profiles from a compact desktop control.
+- Save reusable profiles with their own mode, OBS scene source choices, and reward enablement.
+- Sync OBS scenes through OBS WebSocket v5.
+- Manage Twitch Channel Point reward availability through the Twitch Helix API.
+- Optionally auto-switch profiles when configured avatar apps are detected.
+- Store OBS passwords and Twitch tokens in the OS credential store.
 
 ## Requirements
-
-Runtime:
 
 - Windows
 - Microsoft WebView2 Runtime
 - OBS Studio with OBS WebSocket v5 enabled
-
-Development:
-
-- Go `1.25+`
-- Node.js with npm
-- Wails CLI `v2.12.0` or compatible `v2`
 
 ## Quick Start
 
@@ -56,12 +41,6 @@ Optional:
 15. Configure at least one process name.
 16. Save the settings.
 
-UI notes:
-
-- the main shell uses an icon-only gear button to open Settings
-- each settings workspace uses an icon-only save button with an accessible label
-- the General tab includes an About card with the current app version
-
 ## App Detection
 
 App Detection is optional and disabled by default.
@@ -81,78 +60,37 @@ TuberSwitch stores only the executable filename, such as `AvatarApp.exe`. Matchi
 
 When a configured app is detected, TuberSwitch applies the most recently used profile with the matching mode. For example, a PNG mode process applies a PNGTuber profile, while a 3D mode process applies a 3D profile. If no profile exists for the detected mode, TuberSwitch falls back to switching the mode directly.
 
-The running-app picker filters aggressively by default to reduce noise, including likely-avatar-only filtering, visible-window filtering, and hiding common system/helper processes. If the app you want is missing, disable filters and refresh the list.
-
 ## Development
 
-Core desktop app code is split by responsibility:
+Development requirements:
 
-- `app.go` wires the app, shared interfaces, and lifecycle hooks
-- `app_runtime.go` contains runtime state and mode-switch orchestration
-- `app_integrations.go` contains OBS, Twitch, update, and secret-management integrations
-
-The current frontend aligns with the Starsong compact utility shell used across sibling apps:
-
-- compact branded header with live connection status
-- focused mode card for the primary switch action
-- settings workspace split into `General`, `Connections`, `Profiles`, and `About` tabs
-- restrained gold highlight usage reserved for emphasized release and creation actions
-
-Install frontend dependencies:
+- Go `1.25+`
+- Node.js with npm
+- Wails CLI `v2.12.0` or compatible `v2`
 
 ```powershell
 cd frontend
 npm install
-```
-
-Run in development mode:
-
-```powershell
+cd ..
 wails dev
 ```
 
-Build the app:
+Build output is written to `build\bin\TuberSwitch.exe`.
 
-```powershell
-wails build
-```
+## Quality Gates
 
-Output:
-
-```text
-build\bin\TuberSwitch.exe
-```
-
-## Testing
-
-Before pushing, run the same checks CI runs:
-
-```powershell
-.\scripts\ci-check.ps1
-```
-
-Equivalent manual commands:
+Run the local release checks before tagging:
 
 ```powershell
 cd frontend
-npm ci
 npm run test:coverage
 npm run build
-cd ..
-go test ./... -cover
-wails build
-```
-
-Security pass commands:
-
-```powershell
-cd frontend
 npm audit
 cd ..
+go test ./... -cover
 govulncheck ./...
+wails build
 ```
-
-If `govulncheck` reports standard-library vulnerabilities, upgrade to a patched Go toolchain before shipping. As of June 2026, the fixes for the current reachable findings are in Go `1.25.11+` and Go `1.26.4+`.
 
 ## Local Files
 

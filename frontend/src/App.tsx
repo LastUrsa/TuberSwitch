@@ -460,7 +460,7 @@ function App() {
   const is3D = status?.currentMode === '3D';
   const currentMode = status?.currentModeLabel || 'PNGTuber Mode';
   const canInteract = !busy && status && draft;
-  const currentVersion = updateInfo?.currentVersion || '0.4.0';
+  const currentVersion = updateInfo?.currentVersion || '0.5.0';
   const nextModeLabel = is3D ? 'Switch to PNGTuber mode' : 'Switch to 3D VTuber mode';
   const nextModeShortLabel = is3D ? 'PNGTuber' : '3D';
   const obsHostInvalid = !!draft && !draft.obs.host.trim();
