@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -12,16 +13,23 @@ import (
 var assets embed.FS
 
 func main() {
-	// Create an instance of the app structure
-	app := NewApp()
+	config := parseLaunchConfig(os.Args[1:])
+	app := NewAppForMode(config.Mode)
 
-	// Create application with options
-	err := wails.Run(&options.App{
-		Title:  "TuberSwitch",
-		Width:  920,
-		Height: 580,
-		MinWidth: 860,
-		MinHeight: 540,
+	err := wails.Run(buildWailsOptions(app, config))
+	if err != nil {
+		println("Error:", err.Error())
+	}
+}
+
+func buildWailsOptions(app *App, config launchConfig) *options.App {
+	return &options.App{
+		Title:       "TuberSwitch",
+		Width:       920,
+		Height:      580,
+		MinWidth:    860,
+		MinHeight:   540,
+		StartHidden: config.StartHidden,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -31,9 +39,11 @@ func main() {
 		Bind: []interface{}{
 			app,
 		},
-	})
-
-	if err != nil {
-		println("Error:", err.Error())
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: singleInstanceID(),
+			OnSecondInstanceLaunch: func(secondInstanceData options.SecondInstanceData) {
+				app.handleSecondInstanceLaunch(secondInstanceData.Args)
+			},
+		},
 	}
 }
