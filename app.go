@@ -11,6 +11,7 @@ import (
 	"TuberSwitch/internal/logging"
 	"TuberSwitch/internal/obs"
 	"TuberSwitch/internal/secrets"
+	"TuberSwitch/internal/sip"
 	"TuberSwitch/internal/twitch"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -26,16 +27,19 @@ const (
 var updateReleaseEndpoint = githubLatestRelease
 
 type App struct {
-	ctx            context.Context
-	store          *config.Store
-	secretStore    secretStore
-	logger         *log.Logger
-	closeLog       func()
-	obs            obsService
-	twitch         fullTwitchService
-	detector       appDetectionService
-	processes      appdetect.ProcessProvider
-	openFileDialog func(context.Context, runtime.OpenDialogOptions) (string, error)
+	ctx             context.Context
+	store           *config.Store
+	secretStore     secretStore
+	logger          *log.Logger
+	closeLog        func()
+	obs             obsService
+	twitch          fullTwitchService
+	detector        appDetectionService
+	processes       appdetect.ProcessProvider
+	openFileDialog  func(context.Context, runtime.OpenDialogOptions) (string, error)
+	runtimeMode     string
+	windowActivator func(context.Context)
+	sipServer       *sip.Server
 
 	mu         sync.Mutex
 	cfg        config.Config
@@ -87,6 +91,13 @@ type fullTwitchService interface {
 }
 
 func NewApp() *App {
+	return NewAppForMode(sip.StandaloneMode)
+}
+
+func NewAppForMode(runtimeMode string) *App {
+	if runtimeMode == "" {
+		runtimeMode = sip.StandaloneMode
+	}
 	cfgPath, _ := config.ConfigPath()
 	logPath, _ := config.LogPath()
 	logger, closeLog, err := logging.New(logPath)
@@ -102,24 +113,35 @@ func NewApp() *App {
 		cfg = config.Default()
 	}
 	app := &App{
-		store:          store,
-		secretStore:    secrets.NewStore(),
-		logger:         logger,
-		closeLog:       closeLog,
-		obs:            obs.New(logger),
-		twitch:         twitch.New(logger),
-		cfg:            cfg,
-		lastAction:     "Ready",
-		processes:      appdetect.WindowsProcessProvider{},
-		openFileDialog: runtime.OpenFileDialog,
+		store:           store,
+		secretStore:     secrets.NewStore(),
+		logger:          logger,
+		closeLog:        closeLog,
+		obs:             obs.New(logger),
+		twitch:          twitch.New(logger),
+		cfg:             cfg,
+		lastAction:      "Ready",
+		processes:       appdetect.WindowsProcessProvider{},
+		openFileDialog:  runtime.OpenFileDialog,
+		runtimeMode:     runtimeMode,
+		windowActivator: defaultWindowActivator,
 	}
 	app.detector = appdetect.New(logger, app.processes, app.applyModeFromDetection, app.currentMode)
+	app.sipServer = sip.NewServer(sip.NewService(sip.AppInfo{
+		AppID:    "tuberswitch",
+		Name:     "TuberSwitch",
+		Version:  currentAppVersion,
+		Mode:     runtimeMode,
+		Protocol: sip.ProtocolVersion,
+	}, app))
 	return app.initSecrets()
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	a.logger.Printf("startup")
+	if a.logger != nil {
+		a.logger.Printf("%s", startupModeMessage(a.runtimeMode))
+	}
 	_ = a.connectOBSLocked()
 	a.refreshTwitchTokenLocked()
 	if a.cfg.RefreshRewardsOnStartup && a.cfg.Twitch.AccessToken != "" {
@@ -141,13 +163,38 @@ func (a *App) startup(ctx context.Context) {
 	if a.detector != nil {
 		a.detector.Start(a.cfg.AppDetection)
 	}
+	if a.sipServer != nil {
+		if err := a.sipServer.Start(ctx); err != nil && a.logger != nil {
+			a.logger.Printf("SIP server unavailable: %v", err)
+		}
+	}
 }
 
 func (a *App) shutdown(ctx context.Context) {
-	a.logger.Printf("shutdown")
+	if a.logger != nil {
+		a.logger.Printf("shutdown")
+	}
+	if a.sipServer != nil {
+		_ = a.sipServer.Stop(ctx)
+	}
 	if a.detector != nil {
 		a.detector.Stop()
 	}
-	a.obs.Close()
-	a.closeLog()
+	if a.obs != nil {
+		a.obs.Close()
+	}
+	if a.closeLog != nil {
+		a.closeLog()
+	}
+}
+
+func (a *App) handleSecondInstanceLaunch(args []string) {
+	if !shouldActivateExistingInstance(args) {
+		return
+	}
+	activator := a.windowActivator
+	if activator == nil {
+		activator = defaultWindowActivator
+	}
+	activator(a.ctx)
 }

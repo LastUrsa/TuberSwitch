@@ -60,6 +60,31 @@ TuberSwitch stores only the executable filename, such as `AvatarApp.exe`. Matchi
 
 When a configured app is detected, TuberSwitch applies the most recently used profile with the matching mode. For example, a PNG mode process applies a PNGTuber profile, while a 3D mode process applies a 3D profile. If no profile exists for the detected mode, TuberSwitch falls back to switching the mode directly.
 
+## Service Mode
+
+TuberSwitch can run as a managed Starsong module for LivePanel-style orchestration:
+
+```powershell
+TuberSwitch.exe --service
+TuberSwitch.exe --show
+```
+
+`--service` starts TuberSwitch hidden with app detection and SIP active. `--show` restores the existing UI, or starts normally if no instance is running. Only one TuberSwitch instance runs at a time.
+
+SIP v1.1 is exposed on localhost only across ports `47040-47049`:
+
+- `GET /api/v1/app`
+- `GET /api/v1/health`
+- `GET /api/v1/capabilities`
+- `GET /api/v1/status`
+- `GET /api/v1/profiles`
+- `GET /api/v1/profile/current`
+- `POST /api/v1/profile`
+
+Profiles are the SIP control surface. SIP does not expose OBS scene configuration, reward definitions, app detection rules, or profile CRUD.
+
+See [docs/sip-api-reference.md](docs/sip-api-reference.md) for the full SIP contract. A Postman collection is available at [docs/postman/TuberSwitch-SIP-v1.postman_collection.json](docs/postman/TuberSwitch-SIP-v1.postman_collection.json).
+
 ## Development
 
 Development requirements:
