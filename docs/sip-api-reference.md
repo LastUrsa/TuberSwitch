@@ -116,7 +116,17 @@ Response:
   "healthy": true,
   "activeProfile": "Default",
   "activeProfileId": "default",
-  "activeMode": "png"
+  "activeMode": "png",
+  "obsSummary": "Connected: Gaming / PNG",
+  "obsConnected": true,
+  "activeScene": "Gaming",
+  "activeSource": "PNG",
+  "redeemsEnabled": true,
+  "redeemCount": 2,
+  "appDetectionStatus": "PNG app detected",
+  "appDetectionEnabled": true,
+  "currentModeLabel": "PNGTuber Mode",
+  "activeProfileLastUsed": "2026-06-10T12:00:00Z"
 }
 ```
 
@@ -126,6 +136,19 @@ Known states include:
 - `error`: TuberSwitch could not report profile state
 
 `activeMode` is `png` or `3d` when an active profile is available.
+
+Additional status fields are additive and may be omitted when details are unavailable:
+
+- `obsSummary`: Short OBS connection/configuration summary for compact UI display
+- `obsConnected`: Whether TuberSwitch is currently connected to OBS
+- `activeScene`: Primary enabled scene mapping for the active profile or current config
+- `activeSource`: Primary source for the current mode in `activeScene`
+- `redeemsEnabled`: Whether Twitch reward switching is configured with an access token and reward mappings
+- `redeemCount`: Number of configured reward mappings for the active profile or current config
+- `appDetectionStatus`: Human-readable app detection state
+- `appDetectionEnabled`: Whether app detection is enabled in TuberSwitch
+- `currentModeLabel`: Display label for the current mode
+- `activeProfileLastUsed`: Timestamp stored on the active profile, when available
 
 ### GET `/api/v1/profiles`
 

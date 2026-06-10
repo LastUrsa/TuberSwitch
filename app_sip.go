@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"TuberSwitch/internal/config"
@@ -62,10 +63,78 @@ func (a *App) SIPActivateProfile(ctx context.Context, name string) (sip.Profile,
 	return sip.Profile{}, sip.ErrProfileNotFound
 }
 
+func (a *App) SIPStatusDetails(context.Context) (sip.StatusDetails, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	obsConfigForSummary := a.cfg.OBS
+	a.cfg.Normalize()
+
+	activeProfile, hasActiveProfile := a.cfg.ActiveProfile()
+	mode := a.cfg.CurrentMode
+	if hasActiveProfile && activeProfile.Mode != "" {
+		mode = activeProfile.Mode
+	}
+
+	sceneMappings := a.cfg.SceneMappings
+	rewardMappings := a.cfg.RewardMappings
+	if hasActiveProfile {
+		sceneMappings = activeProfile.SceneMappings
+		rewardMappings = activeProfile.RewardMappings
+	}
+
+	activeScene, activeSource := primarySIPSceneSource(sceneMappings, mode)
+	obsConnected := a.obs != nil && a.obs.Connected()
+
+	label := string(a.cfg.CurrentMode)
+	if profile, ok := a.cfg.Profile(a.cfg.CurrentMode); ok {
+		label = profile.DisplayName
+	}
+
+	return sip.StatusDetails{
+		OBSConnected:          obsConnected,
+		OBSSummary:            sipOBSSummary(obsConnected, obsConfigForSummary, activeScene, activeSource),
+		ActiveScene:           activeScene,
+		ActiveSource:          activeSource,
+		RedeemsEnabled:        strings.TrimSpace(a.cfg.Twitch.AccessToken) != "" && len(rewardMappings) > 0,
+		RedeemCount:           len(rewardMappings),
+		AppDetectionEnabled:   a.cfg.AppDetection.Enabled,
+		AppDetectionStatus:    a.appDetectionStatusLocked(),
+		CurrentModeLabel:      label,
+		ActiveProfileLastUsed: activeProfile.LastUsed,
+	}, nil
+}
+
 func sipProfileFromConfig(profile config.Profile) sip.Profile {
 	return sip.Profile{
 		ID:   profile.ID,
 		Name: profile.Name,
 		Mode: strings.ToLower(string(profile.Mode)),
 	}
+}
+
+func primarySIPSceneSource(mappings []config.SceneMapping, mode config.Mode) (string, string) {
+	for _, mapping := range mappings {
+		if !mapping.Enabled {
+			continue
+		}
+		source := mapping.PNGTuberSource
+		if mode == config.Mode3D {
+			source = mapping.VTuberSource
+		}
+		return mapping.Scene, source
+	}
+	return "", ""
+}
+
+func sipOBSSummary(connected bool, obsConfig config.OBSConfig, scene string, source string) string {
+	if !connected {
+		if strings.TrimSpace(obsConfig.Host) == "" || obsConfig.Port == 0 {
+			return "OBS not configured"
+		}
+		return "OBS not connected"
+	}
+	if strings.TrimSpace(scene) != "" && strings.TrimSpace(source) != "" {
+		return fmt.Sprintf("Connected: %s / %s", scene, source)
+	}
+	return "Connected: no source selected"
 }

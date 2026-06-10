@@ -11,6 +11,10 @@ type ProfileController interface {
 	SIPActivateProfile(context.Context, string) (Profile, error)
 }
 
+type StatusDetailsProvider interface {
+	SIPStatusDetails(context.Context) (StatusDetails, error)
+}
+
 type Service struct {
 	info       AppInfo
 	controller ProfileController
@@ -81,6 +85,20 @@ func (s *Service) Status(ctx context.Context) (StatusResponse, error) {
 	response.ActiveProfile = profile.Name
 	response.ActiveProfileID = profile.ID
 	response.ActiveMode = strings.ToLower(profile.Mode)
+	if provider, ok := s.controller.(StatusDetailsProvider); ok {
+		if details, err := provider.SIPStatusDetails(ctx); err == nil {
+			response.OBSSummary = details.OBSSummary
+			response.OBSConnected = details.OBSConnected
+			response.ActiveScene = details.ActiveScene
+			response.ActiveSource = details.ActiveSource
+			response.RedeemsEnabled = details.RedeemsEnabled
+			response.RedeemCount = details.RedeemCount
+			response.AppDetectionEnabled = details.AppDetectionEnabled
+			response.AppDetectionStatus = details.AppDetectionStatus
+			response.CurrentModeLabel = details.CurrentModeLabel
+			response.ActiveProfileLastUsed = details.ActiveProfileLastUsed
+		}
+	}
 	return response, nil
 }
 

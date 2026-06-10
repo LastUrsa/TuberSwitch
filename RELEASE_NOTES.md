@@ -32,6 +32,7 @@ Release notes are part of the TuberSwitch release process. Before pushing a rele
 - Adds Service Mode with `--service` and `--show` launch behavior.
 - Adds single-instance management for standalone and service launches.
 - Adds SIP v1.1 localhost endpoints for app identity, health, capabilities, status, profiles, current profile, and profile activation.
+- Enriches SIP status with additive OBS, redeem, and app detection summary fields for LivePanel.
 - Uses existing TuberSwitch profile activation paths for SIP profile switching.
 - Adds SIP API reference documentation and a Postman collection.
 - Adds SIP API tests for discovery, profile activation, localhost protection, JSON validation, body-size limits, error handling, and security headers.

@@ -38,12 +38,22 @@ func TestSIPV11ContractForLivePanel(t *testing.T) {
 
 	statusPayload := requestRawJSON(t, handler, http.MethodGet, "/api/v1/status", nil, http.StatusOK)
 	assertJSONFields(t, statusPayload, map[string]any{
-		"state":           StatusReady,
-		"message":         "Profile active",
-		"healthy":         true,
-		"activeProfile":   "Default",
-		"activeProfileId": "default",
-		"activeMode":      "png",
+		"state":                 StatusReady,
+		"message":               "Profile active",
+		"healthy":               true,
+		"activeProfile":         "Default",
+		"activeProfileId":       "default",
+		"activeMode":            "png",
+		"obsSummary":            "Connected: Gaming / PNG",
+		"obsConnected":          true,
+		"activeScene":           "Gaming",
+		"activeSource":          "PNG",
+		"redeemsEnabled":        true,
+		"redeemCount":           float64(2),
+		"appDetectionStatus":    "PNG app detected",
+		"appDetectionEnabled":   true,
+		"currentModeLabel":      "PNGTuber Mode",
+		"activeProfileLastUsed": "2026-06-10T12:00:00Z",
 	})
 }
 
@@ -120,6 +130,24 @@ func TestHealthAndStatusReportControllerFailures(t *testing.T) {
 	requestJSON(t, service.Handler(), http.MethodGet, "/api/v1/status", nil, http.StatusOK, &status)
 	if status.State != StatusError || status.Healthy || status.Message != "TuberSwitch profiles are unavailable." {
 		t.Fatalf("status = %+v", status)
+	}
+}
+
+func TestStatusIgnoresOptionalDetailsFailures(t *testing.T) {
+	service := newTestService()
+	service.controller = &fakeController{
+		profiles:   []Profile{{ID: "default", Name: "Default", Mode: "png"}},
+		current:    Profile{ID: "default", Name: "Default", Mode: "png"},
+		detailsErr: errors.New("details unavailable"),
+	}
+
+	var status StatusResponse
+	requestJSON(t, service.Handler(), http.MethodGet, "/api/v1/status", nil, http.StatusOK, &status)
+	if status.State != StatusReady || !status.Healthy || status.ActiveProfile != "Default" {
+		t.Fatalf("status = %+v", status)
+	}
+	if status.OBSSummary != "" || status.OBSConnected || status.RedeemsEnabled || status.AppDetectionEnabled {
+		t.Fatalf("optional details should be omitted/zeroed: %+v", status)
 	}
 }
 
@@ -237,13 +265,27 @@ func newTestService() *Service {
 			{ID: "gaming", Name: "Gaming Stream", Mode: "3d"},
 		},
 		current: Profile{ID: "default", Name: "Default", Mode: "png"},
+		details: StatusDetails{
+			OBSConnected:          true,
+			OBSSummary:            "Connected: Gaming / PNG",
+			ActiveScene:           "Gaming",
+			ActiveSource:          "PNG",
+			RedeemsEnabled:        true,
+			RedeemCount:           2,
+			AppDetectionEnabled:   true,
+			AppDetectionStatus:    "PNG app detected",
+			CurrentModeLabel:      "PNGTuber Mode",
+			ActiveProfileLastUsed: "2026-06-10T12:00:00Z",
+		},
 	})
 }
 
 type fakeController struct {
-	profiles []Profile
-	current  Profile
-	err      error
+	profiles   []Profile
+	current    Profile
+	details    StatusDetails
+	detailsErr error
+	err        error
 }
 
 func (f fakeController) SIPProfiles(context.Context) ([]Profile, error) {
@@ -265,6 +307,10 @@ func (f *fakeController) SIPActivateProfile(_ context.Context, name string) (Pro
 		}
 	}
 	return Profile{}, ErrProfileNotFound
+}
+
+func (f fakeController) SIPStatusDetails(context.Context) (StatusDetails, error) {
+	return f.details, f.detailsErr
 }
 
 func stringsEqualFold(left string, right string) bool {
