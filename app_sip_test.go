@@ -95,6 +95,83 @@ func TestSIPProfileAccessors(t *testing.T) {
 	}
 }
 
+func TestSIPStatusDetailsExposeRuntimeDrawerFields(t *testing.T) {
+	app := &App{
+		logger: log.Default(),
+		obs:    &fakeOBSService{connected: true},
+		cfg: config.Config{
+			OBS:             config.OBSConfig{Host: "127.0.0.1", Port: 4455},
+			Twitch:          config.TwitchConfig{AccessToken: "token"},
+			ModeProfiles:    config.DefaultProfiles(),
+			CurrentMode:     config.Mode3D,
+			ActiveProfileID: "gaming",
+			AppDetection:    config.AppDetectionConfig{Enabled: true},
+			Profiles: []config.Profile{
+				{
+					ID:       "gaming",
+					Name:     "Gaming Stream",
+					Mode:     config.Mode3D,
+					LastUsed: "2026-06-10T12:00:00Z",
+					SceneMappings: []config.SceneMapping{
+						{Scene: "Disabled", Enabled: false, VTuberSource: "Unused", PNGTuberSource: "Unused"},
+						{Scene: "Gaming", Enabled: true, VTuberSource: "VTuber", PNGTuberSource: "PNG"},
+					},
+					RewardMappings: []config.RewardMapping{
+						{RewardID: "dance", RewardName: "Dance", Is3DOnly: true, Manageable: true},
+					},
+				},
+			},
+		},
+	}
+
+	details, err := app.SIPStatusDetails(context.Background())
+	if err != nil {
+		t.Fatalf("SIPStatusDetails: %v", err)
+	}
+	if !details.OBSConnected || details.OBSSummary != "Connected: Gaming / VTuber" {
+		t.Fatalf("obs details = %+v", details)
+	}
+	if details.ActiveScene != "Gaming" || details.ActiveSource != "VTuber" {
+		t.Fatalf("active scene/source = %+v", details)
+	}
+	if !details.RedeemsEnabled || details.RedeemCount != 1 {
+		t.Fatalf("redeem details = %+v", details)
+	}
+	if !details.AppDetectionEnabled || details.AppDetectionStatus != "Enabled" {
+		t.Fatalf("app detection details = %+v", details)
+	}
+	if details.CurrentModeLabel != "3D VTuber Mode" || details.ActiveProfileLastUsed != "2026-06-10T12:00:00Z" {
+		t.Fatalf("profile details = %+v", details)
+	}
+}
+
+func TestSIPStatusDetailsReportUnavailableConfiguration(t *testing.T) {
+	app := &App{
+		logger: log.Default(),
+		obs:    &fakeOBSService{},
+		cfg: config.Config{
+			OBS:             config.OBSConfig{},
+			ModeProfiles:    config.DefaultProfiles(),
+			CurrentMode:     config.ModePNG,
+			ActiveProfileID: config.DefaultProfileID,
+			Profiles: []config.Profile{
+				{ID: config.DefaultProfileID, Name: "Default", Mode: config.ModePNG},
+			},
+		},
+	}
+
+	details, err := app.SIPStatusDetails(context.Background())
+	if err != nil {
+		t.Fatalf("SIPStatusDetails: %v", err)
+	}
+	if details.OBSConnected || details.OBSSummary != "OBS not configured" {
+		t.Fatalf("obs details = %+v", details)
+	}
+	if details.RedeemsEnabled || details.RedeemCount != 0 {
+		t.Fatalf("redeem details = %+v", details)
+	}
+}
+
 func TestSIPActivateProfileRejectsUnknownProfile(t *testing.T) {
 	app := &App{
 		logger: log.Default(),

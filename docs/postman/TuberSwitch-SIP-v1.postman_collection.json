@@ -85,9 +85,39 @@
                 "status"
               ]
             },
-            "description": "Returns lightweight runtime status and the active TuberSwitch profile."
+            "description": "Returns lightweight runtime status, active TuberSwitch profile, and additive LivePanel drawer details for OBS, redeems, and app detection."
           },
-          "response": []
+          "response": [
+            {
+              "name": "Ready with runtime details",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "status"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"state\": \"ready\",\n  \"message\": \"Profile active\",\n  \"healthy\": true,\n  \"activeProfile\": \"Default\",\n  \"activeProfileId\": \"default\",\n  \"activeMode\": \"png\",\n  \"obsSummary\": \"Connected: Gaming / PNG\",\n  \"obsConnected\": true,\n  \"activeScene\": \"Gaming\",\n  \"activeSource\": \"PNG\",\n  \"redeemsEnabled\": true,\n  \"redeemCount\": 2,\n  \"appDetectionStatus\": \"PNG app detected\",\n  \"appDetectionEnabled\": true,\n  \"currentModeLabel\": \"PNGTuber Mode\",\n  \"activeProfileLastUsed\": \"2026-06-10T12:00:00Z\"\n}"
+            }
+          ]
         }
       ]
     },

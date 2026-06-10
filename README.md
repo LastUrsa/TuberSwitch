@@ -81,7 +81,7 @@ SIP v1.1 is exposed on localhost only across ports `47040-47049`:
 - `GET /api/v1/profile/current`
 - `POST /api/v1/profile`
 
-Profiles are the SIP control surface. SIP does not expose OBS scene configuration, reward definitions, app detection rules, or profile CRUD.
+Profiles are the SIP control surface. Status includes compact OBS, redeem, and app detection summaries for local dashboards, but SIP does not expose configuration APIs for OBS scenes, reward definitions, app detection rules, or profile CRUD.
 
 See [docs/sip-api-reference.md](docs/sip-api-reference.md) for the full SIP contract. A Postman collection is available at [docs/postman/TuberSwitch-SIP-v1.postman_collection.json](docs/postman/TuberSwitch-SIP-v1.postman_collection.json).
 
