@@ -123,6 +123,8 @@ Response:
   "activeSource": "PNG",
   "redeemsEnabled": true,
   "redeemCount": 2,
+  "manageableRedeemCount": 1,
+  "unmanageableRedeemCount": 1,
   "appDetectionStatus": "PNG app detected",
   "appDetectionEnabled": true,
   "currentModeLabel": "PNGTuber Mode",
@@ -143,8 +145,10 @@ Additional status fields are additive and may be omitted when details are unavai
 - `obsConnected`: Whether TuberSwitch is currently connected to OBS
 - `activeScene`: Primary enabled scene mapping for the active profile or current config
 - `activeSource`: Primary source for the current mode in `activeScene`
-- `redeemsEnabled`: Whether Twitch reward switching is configured with an access token and reward mappings
-- `redeemCount`: Number of configured reward mappings for the active profile or current config
+- `redeemsEnabled`: Whether Twitch reward switching is configured with an access token and at least one manageable reward
+- `redeemCount`: Total number of configured reward mappings for the active profile or current config
+- `manageableRedeemCount`: Number of configured reward mappings TuberSwitch can edit through Twitch
+- `unmanageableRedeemCount`: Number of configured reward mappings TuberSwitch can see but cannot edit through Twitch
 - `appDetectionStatus`: Human-readable app detection state
 - `appDetectionEnabled`: Whether app detection is enabled in TuberSwitch
 - `currentModeLabel`: Display label for the current mode

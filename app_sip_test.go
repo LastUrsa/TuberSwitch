@@ -118,6 +118,7 @@ func TestSIPStatusDetailsExposeRuntimeDrawerFields(t *testing.T) {
 					},
 					RewardMappings: []config.RewardMapping{
 						{RewardID: "dance", RewardName: "Dance", Is3DOnly: true, Manageable: true},
+						{RewardID: "hydrate", RewardName: "Hydrate", Manageable: false},
 					},
 				},
 			},
@@ -134,7 +135,7 @@ func TestSIPStatusDetailsExposeRuntimeDrawerFields(t *testing.T) {
 	if details.ActiveScene != "Gaming" || details.ActiveSource != "VTuber" {
 		t.Fatalf("active scene/source = %+v", details)
 	}
-	if !details.RedeemsEnabled || details.RedeemCount != 1 {
+	if !details.RedeemsEnabled || details.RedeemCount != 2 || details.ManageableRedeemCount != 1 || details.UnmanageableRedeemCount != 1 {
 		t.Fatalf("redeem details = %+v", details)
 	}
 	if !details.AppDetectionEnabled || details.AppDetectionStatus != "Enabled" {
@@ -151,11 +152,19 @@ func TestSIPStatusDetailsReportUnavailableConfiguration(t *testing.T) {
 		obs:    &fakeOBSService{},
 		cfg: config.Config{
 			OBS:             config.OBSConfig{},
+			Twitch:          config.TwitchConfig{AccessToken: "token"},
 			ModeProfiles:    config.DefaultProfiles(),
 			CurrentMode:     config.ModePNG,
 			ActiveProfileID: config.DefaultProfileID,
 			Profiles: []config.Profile{
-				{ID: config.DefaultProfileID, Name: "Default", Mode: config.ModePNG},
+				{
+					ID:   config.DefaultProfileID,
+					Name: "Default",
+					Mode: config.ModePNG,
+					RewardMappings: []config.RewardMapping{
+						{RewardID: "hydrate", RewardName: "Hydrate", Manageable: false},
+					},
+				},
 			},
 		},
 	}
@@ -167,7 +176,7 @@ func TestSIPStatusDetailsReportUnavailableConfiguration(t *testing.T) {
 	if details.OBSConnected || details.OBSSummary != "OBS not configured" {
 		t.Fatalf("obs details = %+v", details)
 	}
-	if details.RedeemsEnabled || details.RedeemCount != 0 {
+	if details.RedeemsEnabled || details.RedeemCount != 1 || details.ManageableRedeemCount != 0 || details.UnmanageableRedeemCount != 1 {
 		t.Fatalf("redeem details = %+v", details)
 	}
 }

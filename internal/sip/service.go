@@ -93,6 +93,8 @@ func (s *Service) Status(ctx context.Context) (StatusResponse, error) {
 			response.ActiveSource = details.ActiveSource
 			response.RedeemsEnabled = details.RedeemsEnabled
 			response.RedeemCount = details.RedeemCount
+			response.ManageableRedeemCount = details.ManageableRedeemCount
+			response.UnmanageableRedeemCount = details.UnmanageableRedeemCount
 			response.AppDetectionEnabled = details.AppDetectionEnabled
 			response.AppDetectionStatus = details.AppDetectionStatus
 			response.CurrentModeLabel = details.CurrentModeLabel
