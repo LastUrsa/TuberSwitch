@@ -115,7 +115,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"state\": \"ready\",\n  \"message\": \"Profile active\",\n  \"healthy\": true,\n  \"activeProfile\": \"Default\",\n  \"activeProfileId\": \"default\",\n  \"activeMode\": \"png\",\n  \"obsSummary\": \"Connected: Gaming / PNG\",\n  \"obsConnected\": true,\n  \"activeScene\": \"Gaming\",\n  \"activeSource\": \"PNG\",\n  \"redeemsEnabled\": true,\n  \"redeemCount\": 2,\n  \"appDetectionStatus\": \"PNG app detected\",\n  \"appDetectionEnabled\": true,\n  \"currentModeLabel\": \"PNGTuber Mode\",\n  \"activeProfileLastUsed\": \"2026-06-10T12:00:00Z\"\n}"
+              "body": "{\n  \"state\": \"ready\",\n  \"message\": \"Profile active\",\n  \"healthy\": true,\n  \"activeProfile\": \"Default\",\n  \"activeProfileId\": \"default\",\n  \"activeMode\": \"png\",\n  \"obsSummary\": \"Connected: Gaming / PNG\",\n  \"obsConnected\": true,\n  \"activeScene\": \"Gaming\",\n  \"activeSource\": \"PNG\",\n  \"redeemsEnabled\": true,\n  \"redeemCount\": 2,\n  \"manageableRedeemCount\": 1,\n  \"unmanageableRedeemCount\": 1,\n  \"appDetectionStatus\": \"PNG app detected\",\n  \"appDetectionEnabled\": true,\n  \"currentModeLabel\": \"PNGTuber Mode\",\n  \"activeProfileLastUsed\": \"2026-06-10T12:00:00Z\"\n}"
             }
           ]
         }

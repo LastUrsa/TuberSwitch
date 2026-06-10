@@ -58,35 +58,39 @@ type CapabilitiesResponse struct {
 }
 
 type StatusResponse struct {
-	State                 string `json:"state"`
-	Message               string `json:"message"`
-	Healthy               bool   `json:"healthy"`
-	ActiveProfile         string `json:"activeProfile,omitempty"`
-	ActiveProfileID       string `json:"activeProfileId,omitempty"`
-	ActiveMode            string `json:"activeMode,omitempty"`
-	OBSSummary            string `json:"obsSummary,omitempty"`
-	OBSConnected          bool   `json:"obsConnected"`
-	ActiveScene           string `json:"activeScene,omitempty"`
-	ActiveSource          string `json:"activeSource,omitempty"`
-	RedeemsEnabled        bool   `json:"redeemsEnabled"`
-	RedeemCount           int    `json:"redeemCount"`
-	AppDetectionStatus    string `json:"appDetectionStatus,omitempty"`
-	AppDetectionEnabled   bool   `json:"appDetectionEnabled"`
-	CurrentModeLabel      string `json:"currentModeLabel,omitempty"`
-	ActiveProfileLastUsed string `json:"activeProfileLastUsed,omitempty"`
+	State                   string `json:"state"`
+	Message                 string `json:"message"`
+	Healthy                 bool   `json:"healthy"`
+	ActiveProfile           string `json:"activeProfile,omitempty"`
+	ActiveProfileID         string `json:"activeProfileId,omitempty"`
+	ActiveMode              string `json:"activeMode,omitempty"`
+	OBSSummary              string `json:"obsSummary,omitempty"`
+	OBSConnected            bool   `json:"obsConnected"`
+	ActiveScene             string `json:"activeScene,omitempty"`
+	ActiveSource            string `json:"activeSource,omitempty"`
+	RedeemsEnabled          bool   `json:"redeemsEnabled"`
+	RedeemCount             int    `json:"redeemCount"`
+	ManageableRedeemCount   int    `json:"manageableRedeemCount"`
+	UnmanageableRedeemCount int    `json:"unmanageableRedeemCount"`
+	AppDetectionStatus      string `json:"appDetectionStatus,omitempty"`
+	AppDetectionEnabled     bool   `json:"appDetectionEnabled"`
+	CurrentModeLabel        string `json:"currentModeLabel,omitempty"`
+	ActiveProfileLastUsed   string `json:"activeProfileLastUsed,omitempty"`
 }
 
 type StatusDetails struct {
-	OBSConnected          bool
-	OBSSummary            string
-	ActiveScene           string
-	ActiveSource          string
-	RedeemsEnabled        bool
-	RedeemCount           int
-	AppDetectionEnabled   bool
-	AppDetectionStatus    string
-	CurrentModeLabel      string
-	ActiveProfileLastUsed string
+	OBSConnected            bool
+	OBSSummary              string
+	ActiveScene             string
+	ActiveSource            string
+	RedeemsEnabled          bool
+	RedeemCount             int
+	ManageableRedeemCount   int
+	UnmanageableRedeemCount int
+	AppDetectionEnabled     bool
+	AppDetectionStatus      string
+	CurrentModeLabel        string
+	ActiveProfileLastUsed   string
 }
 
 type ProfilesResponse struct {

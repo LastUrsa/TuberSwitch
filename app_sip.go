@@ -84,6 +84,7 @@ func (a *App) SIPStatusDetails(context.Context) (sip.StatusDetails, error) {
 
 	activeScene, activeSource := primarySIPSceneSource(sceneMappings, mode)
 	obsConnected := a.obs != nil && a.obs.Connected()
+	manageableRedeemCount, unmanageableRedeemCount := sipRedeemCounts(rewardMappings)
 
 	label := string(a.cfg.CurrentMode)
 	if profile, ok := a.cfg.Profile(a.cfg.CurrentMode); ok {
@@ -91,17 +92,32 @@ func (a *App) SIPStatusDetails(context.Context) (sip.StatusDetails, error) {
 	}
 
 	return sip.StatusDetails{
-		OBSConnected:          obsConnected,
-		OBSSummary:            sipOBSSummary(obsConnected, obsConfigForSummary, activeScene, activeSource),
-		ActiveScene:           activeScene,
-		ActiveSource:          activeSource,
-		RedeemsEnabled:        strings.TrimSpace(a.cfg.Twitch.AccessToken) != "" && len(rewardMappings) > 0,
-		RedeemCount:           len(rewardMappings),
-		AppDetectionEnabled:   a.cfg.AppDetection.Enabled,
-		AppDetectionStatus:    a.appDetectionStatusLocked(),
-		CurrentModeLabel:      label,
-		ActiveProfileLastUsed: activeProfile.LastUsed,
+		OBSConnected:            obsConnected,
+		OBSSummary:              sipOBSSummary(obsConnected, obsConfigForSummary, activeScene, activeSource),
+		ActiveScene:             activeScene,
+		ActiveSource:            activeSource,
+		RedeemsEnabled:          strings.TrimSpace(a.cfg.Twitch.AccessToken) != "" && manageableRedeemCount > 0,
+		RedeemCount:             len(rewardMappings),
+		ManageableRedeemCount:   manageableRedeemCount,
+		UnmanageableRedeemCount: unmanageableRedeemCount,
+		AppDetectionEnabled:     a.cfg.AppDetection.Enabled,
+		AppDetectionStatus:      a.appDetectionStatusLocked(),
+		CurrentModeLabel:        label,
+		ActiveProfileLastUsed:   activeProfile.LastUsed,
 	}, nil
+}
+
+func sipRedeemCounts(mappings []config.RewardMapping) (int, int) {
+	manageable := 0
+	unmanageable := 0
+	for _, mapping := range mappings {
+		if mapping.Manageable {
+			manageable++
+			continue
+		}
+		unmanageable++
+	}
+	return manageable, unmanageable
 }
 
 func sipProfileFromConfig(profile config.Profile) sip.Profile {
