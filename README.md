@@ -21,25 +21,20 @@ Built with Wails, Go, and React.
 
 ## Quick Start
 
-1. Open `Settings > Connections`.
-2. Enter the OBS host, port, and password.
-3. Enter the Twitch Client ID.
-4. Click `Save connection settings`, then `Login with Twitch`.
-5. Complete device activation in the browser.
-6. Click `Refresh Rewards`.
-7. Open `Settings > Profiles`.
-8. Choose the profile mode.
-9. Click `Sync Scenes & Sources`.
-10. For each OBS scene you want managed, choose the `Desired Source`.
-11. Check `Enabled` for rewards that should be available in that profile.
-12. Click `Save profile`.
+1. Open `Settings > Connections`, enter OBS and Twitch details, then save.
+2. Click `Login with Twitch`, complete device activation, and refresh rewards.
+3. Open `Settings > Profiles` and choose the profile mode.
+4. Click `Sync Scenes & Sources`.
+5. Choose each managed scene's `Desired Source`.
+6. Check `Enabled` for rewards available in that profile.
+7. Click `Save profile`.
 
 Optional:
 
-13. Open `Settings > General`.
-14. Enable `App Detection`.
-15. Configure at least one process name.
-16. Save the settings.
+8. Open `Settings > General`.
+9. Enable `App Detection`.
+10. Configure at least one process name.
+11. Save the settings.
 
 ## App Detection
 

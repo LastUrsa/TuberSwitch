@@ -65,7 +65,7 @@ Response:
 {
   "appId": "tuberswitch",
   "name": "TuberSwitch",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "mode": "standalone",
   "protocolVersion": "1.1"
 }
