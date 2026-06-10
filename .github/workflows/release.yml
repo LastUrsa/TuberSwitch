@@ -84,6 +84,49 @@ jobs:
             }
           }
 
+      - name: Prepare release notes
+        shell: powershell
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $notesPath = "RELEASE_NOTES.md"
+          $outputPath = "build/bin/release-notes.md"
+          $lines = Get-Content -LiteralPath $notesPath
+
+          $start = -1
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -eq "## $tag") {
+              $start = $i
+              break
+            }
+          }
+          if ($start -lt 0) {
+            throw "Missing release notes section for $tag in $notesPath"
+          }
+
+          $end = $lines.Count
+          for ($i = $start + 1; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^##\s+') {
+              $end = $i
+              break
+            }
+          }
+
+          $bodyLines = New-Object System.Collections.Generic.List[string]
+          for ($i = $start + 1; $i -lt $end; $i++) {
+            $bodyLines.Add($lines[$i])
+          }
+          while ($bodyLines.Count -gt 0 -and [string]::IsNullOrWhiteSpace($bodyLines[0])) {
+            $bodyLines.RemoveAt(0)
+          }
+          while ($bodyLines.Count -gt 0 -and [string]::IsNullOrWhiteSpace($bodyLines[$bodyLines.Count - 1])) {
+            $bodyLines.RemoveAt($bodyLines.Count - 1)
+          }
+          if ($bodyLines.Count -eq 0) {
+            throw "Release notes section for $tag is empty"
+          }
+
+          Set-Content -LiteralPath $outputPath -Value $bodyLines
+
       - name: Publish GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -95,4 +138,4 @@ jobs:
             "build/bin/TuberSwitch-windows-amd64-portable.zip" `
             "build/bin/SHA256SUMS.txt" `
             --title "TuberSwitch $env:GITHUB_REF_NAME" `
-            --generate-notes
+            --notes-file "build/bin/release-notes.md"

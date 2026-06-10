@@ -99,7 +99,7 @@ Build output is written to `build\bin\TuberSwitch.exe`.
 
 ## Quality Gates
 
-Run the local release checks before tagging. Add release notes in `RELEASE_NOTES.md` and use them for the GitHub release.
+Run the local release checks before tagging. Add a `## vX.Y.Z` section to `RELEASE_NOTES.md`; the release workflow publishes that section as the GitHub Release body and fails if it is missing or empty.
 
 ```powershell
 cd frontend

@@ -1,6 +1,6 @@
 # Release Notes
 
-Release notes are part of the TuberSwitch release process. Before pushing a release tag, add notes for the new version here and use the same notes for the GitHub release.
+Release notes are part of the TuberSwitch release process. Before pushing a release tag, add a matching `## vX.Y.Z` section here. The release workflow publishes that section as the GitHub Release body and fails if it is missing or empty.
 
 ## v0.6.0
 
