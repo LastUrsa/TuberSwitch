@@ -18,6 +18,7 @@ Release notes are part of the TuberSwitch release process. Before pushing a rele
 ### Maintenance
 
 - Updated release metadata to `0.6.0`.
+- Aligns Windows installer metadata and default install root with the Starsong Installer Standard.
 
 ## v0.5.0
 

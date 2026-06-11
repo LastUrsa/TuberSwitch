@@ -33,6 +33,9 @@ Unicode true
 ## Include the wails tools
 ####
 !include "wails_tools.nsh"
+!include "LogicLib.nsh"
+
+!define LEGACY_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\LastUrsaTuberSwitch"
 
 # The version information for this two must consist of 4 parts
 VIProductVersion "${INFO_PRODUCTVERSION}.0"
@@ -76,6 +79,24 @@ InstallDir "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}" # Default i
 ShowInstDetails show # This will always show the installation details.
 
 Function .onInit
+   SetRegView 64
+   ReadRegStr $0 HKLM "${UNINST_KEY}" "InstallLocation"
+   ${If} $0 != ""
+      StrCpy $INSTDIR "$0"
+   ${Else}
+      ReadRegStr $0 HKLM "${LEGACY_UNINST_KEY}" "InstallLocation"
+      ${If} $0 != ""
+         StrCpy $INSTDIR "$0"
+      ${Else}
+         ReadRegStr $0 HKLM "${LEGACY_UNINST_KEY}" "DisplayIcon"
+         ${If} $0 != ""
+            ${GetParent} "$0" $1
+            ${If} $1 != ""
+               StrCpy $INSTDIR "$1"
+            ${EndIf}
+         ${EndIf}
+      ${EndIf}
+   ${EndIf}
    !insertmacro wails.checkArchitecture
 FunctionEnd
 
@@ -95,6 +116,9 @@ Section
     !insertmacro wails.associateCustomProtocols
 
     !insertmacro wails.writeUninstaller
+    SetRegView 64
+    WriteRegStr HKLM "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
+    DeleteRegKey HKLM "${LEGACY_UNINST_KEY}"
 SectionEnd
 
 Section "uninstall"
