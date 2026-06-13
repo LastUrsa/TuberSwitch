@@ -11,6 +11,11 @@ type ProfileController interface {
 	SIPActivateProfile(context.Context, string) (Profile, error)
 }
 
+type RedeemController interface {
+	SIPRedeems(context.Context) ([]Redeem, error)
+	SIPSetRedeems(context.Context, []UpdateRedeemRequest) error
+}
+
 type StatusDetailsProvider interface {
 	SIPStatusDetails(context.Context) (StatusDetails, error)
 }
@@ -21,7 +26,7 @@ type Service struct {
 }
 
 func NewService(info AppInfo, controller ProfileController) *Service {
-	if info.Protocol == "" {
+	if info.Protocol == 0 {
 		info.Protocol = ProtocolVersion
 	}
 	if info.Mode == "" {
@@ -36,10 +41,12 @@ func (s *Service) App(context.Context) (AppResponse, error) {
 	}
 	return AppResponse{
 		AppID:           s.info.AppID,
+		AppName:         s.info.Name,
 		Name:            s.info.Name,
 		Version:         s.info.Version,
 		Mode:            normalizeMode(s.info.Mode),
 		ProtocolVersion: s.info.Protocol,
+		Capabilities:    sipCapabilities(),
 	}, nil
 }
 
@@ -55,8 +62,11 @@ func (s *Service) Health(ctx context.Context) (HealthResponse, error) {
 
 func (s *Service) Capabilities(context.Context) (CapabilitiesResponse, error) {
 	return CapabilitiesResponse{
+		ProtocolVersion:         ProtocolVersion,
+		Capabilities:            sipCapabilities(),
 		SupportsProfiles:        true,
 		SupportsStatusReporting: true,
+		SupportsRedeems:         true,
 	}, nil
 }
 
@@ -84,6 +94,8 @@ func (s *Service) Status(ctx context.Context) (StatusResponse, error) {
 	}
 	response.ActiveProfile = profile.Name
 	response.ActiveProfileID = profile.ID
+	response.ActiveProfileName = profile.Name
+	response.Mode = normalizeProfileMode(profile.Mode)
 	response.ActiveMode = strings.ToLower(profile.Mode)
 	if provider, ok := s.controller.(StatusDetailsProvider); ok {
 		if details, err := provider.SIPStatusDetails(ctx); err == nil {
@@ -102,6 +114,43 @@ func (s *Service) Status(ctx context.Context) (StatusResponse, error) {
 		}
 	}
 	return response, nil
+}
+
+func (s *Service) Redeems(ctx context.Context) (RedeemsResponse, error) {
+	if s == nil || s.controller == nil {
+		return RedeemsResponse{}, nil
+	}
+	controller, ok := s.controller.(RedeemController)
+	if !ok {
+		return RedeemsResponse{}, nil
+	}
+	redeems, err := controller.SIPRedeems(ctx)
+	if err != nil {
+		return RedeemsResponse{}, err
+	}
+	return RedeemsResponse{Redeems: redeems}, nil
+}
+
+func (s *Service) SetRedeems(ctx context.Context, updates []UpdateRedeemRequest) (SuccessResponse, error) {
+	if len(updates) == 0 {
+		return SuccessResponse{}, ErrInvalidRequest
+	}
+	if s == nil || s.controller == nil {
+		return SuccessResponse{}, ErrInvalidRequest
+	}
+	controller, ok := s.controller.(RedeemController)
+	if !ok {
+		return SuccessResponse{}, ErrInvalidRequest
+	}
+	for _, update := range updates {
+		if strings.TrimSpace(update.ID) == "" {
+			return SuccessResponse{}, ErrInvalidRequest
+		}
+	}
+	if err := controller.SIPSetRedeems(ctx, updates); err != nil {
+		return SuccessResponse{}, err
+	}
+	return SuccessResponse{Success: true}, nil
 }
 
 func (s *Service) Profiles(ctx context.Context) (ProfilesResponse, error) {
@@ -156,4 +205,19 @@ func normalizeMode(mode string) string {
 		return ServiceMode
 	}
 	return StandaloneMode
+}
+
+func normalizeProfileMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "3d":
+		return "3d"
+	case "png":
+		return "png"
+	default:
+		return "unknown"
+	}
+}
+
+func sipCapabilities() []string {
+	return []string{ProfilesCapability, RedeemsCapability}
 }

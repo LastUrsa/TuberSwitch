@@ -107,6 +107,65 @@ func (a *App) SIPStatusDetails(context.Context) (sip.StatusDetails, error) {
 	}, nil
 }
 
+func (a *App) SIPRedeems(context.Context) ([]sip.Redeem, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cfg.Normalize()
+	mappings := a.activeSIPRewardMappingsLocked()
+	twitchReady := strings.TrimSpace(a.cfg.Twitch.AccessToken) != ""
+	redeems := make([]sip.Redeem, 0, len(mappings))
+	for _, mapping := range mappings {
+		if strings.TrimSpace(mapping.RewardID) == "" || strings.TrimSpace(mapping.RewardName) == "" {
+			continue
+		}
+		redeems = append(redeems, sip.Redeem{
+			ID:        mapping.RewardID,
+			Name:      mapping.RewardName,
+			Available: mapping.Manageable && twitchReady,
+			Enabled:   mapping.Is3DOnly,
+		})
+	}
+	return redeems, nil
+}
+
+func (a *App) SIPSetRedeems(_ context.Context, updates []sip.UpdateRedeemRequest) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cfg.Normalize()
+
+	updateByID := map[string]bool{}
+	for _, update := range updates {
+		updateByID[strings.TrimSpace(update.ID)] = update.Enabled
+	}
+
+	updated := false
+	found := map[string]bool{}
+	if profile, index, ok := a.activeSIPProfileWithIndexLocked(); ok {
+		if err := updateSIPRewardMappings(profile.RewardMappings, updateByID, found); err != nil {
+			return err
+		}
+		a.cfg.Profiles[index] = profile
+		if profile.ID == a.cfg.ActiveProfileID {
+			a.cfg.RewardMappings = cloneSIPRewardMappings(profile.RewardMappings)
+		}
+		updated = true
+	} else {
+		if err := updateSIPRewardMappings(a.cfg.RewardMappings, updateByID, found); err != nil {
+			return err
+		}
+		updated = true
+	}
+	for id := range updateByID {
+		if !found[id] {
+			return sip.ErrRedeemNotFound
+		}
+	}
+	if updated && a.store != nil {
+		return a.store.Save(a.cfg)
+	}
+	return nil
+}
+
 func sipRedeemCounts(mappings []config.RewardMapping) (int, int) {
 	manageable := 0
 	unmanageable := 0
@@ -118,6 +177,46 @@ func sipRedeemCounts(mappings []config.RewardMapping) (int, int) {
 		unmanageable++
 	}
 	return manageable, unmanageable
+}
+
+func (a *App) activeSIPRewardMappingsLocked() []config.RewardMapping {
+	if profile, _, ok := a.activeSIPProfileWithIndexLocked(); ok {
+		return profile.RewardMappings
+	}
+	return a.cfg.RewardMappings
+}
+
+func (a *App) activeSIPProfileWithIndexLocked() (config.Profile, int, bool) {
+	for i, profile := range a.cfg.Profiles {
+		if profile.ID == a.cfg.ActiveProfileID {
+			return profile, i, true
+		}
+	}
+	return config.Profile{}, -1, false
+}
+
+func updateSIPRewardMappings(mappings []config.RewardMapping, updateByID map[string]bool, found map[string]bool) error {
+	for i := range mappings {
+		enabled, ok := updateByID[mappings[i].RewardID]
+		if !ok {
+			continue
+		}
+		found[mappings[i].RewardID] = true
+		if enabled && !mappings[i].Manageable {
+			return sip.ErrInvalidRequest
+		}
+		mappings[i].Is3DOnly = enabled
+	}
+	return nil
+}
+
+func cloneSIPRewardMappings(mappings []config.RewardMapping) []config.RewardMapping {
+	if mappings == nil {
+		return nil
+	}
+	cloned := make([]config.RewardMapping, len(mappings))
+	copy(cloned, mappings)
+	return cloned
 }
 
 func sipProfileFromConfig(profile config.Profile) sip.Profile {
