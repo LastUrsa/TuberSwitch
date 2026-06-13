@@ -66,7 +66,7 @@ TuberSwitch.exe --show
 
 `--service` starts TuberSwitch hidden with app detection and SIP active. `--show` restores the existing UI, or starts normally if no instance is running. Only one TuberSwitch instance runs at a time.
 
-SIP v1.1 is exposed on localhost only across ports `47040-47049`:
+SIP v1 is exposed on localhost only across ports `47040-47049`:
 
 - `GET /api/v1/app`
 - `GET /api/v1/health`
@@ -75,8 +75,10 @@ SIP v1.1 is exposed on localhost only across ports `47040-47049`:
 - `GET /api/v1/profiles`
 - `GET /api/v1/profile/current`
 - `POST /api/v1/profile`
+- `GET /api/v1/redeems`
+- `POST /api/v1/redeems`
 
-Profiles are the SIP control surface. Status includes compact OBS, redeem, and app detection summaries for local dashboards, but SIP does not expose configuration APIs for OBS scenes, reward definitions, app detection rules, or profile CRUD.
+Profiles and existing redeem state are the SIP control surface. Status includes compact OBS, redeem, and app detection summaries for local dashboards, but SIP does not expose configuration APIs for OBS scenes, reward definitions, app detection rules, or profile CRUD.
 
 See [docs/sip-api-reference.md](docs/sip-api-reference.md) for the full SIP contract. A Postman collection is available at [docs/postman/TuberSwitch-SIP-v1.postman_collection.json](docs/postman/TuberSwitch-SIP-v1.postman_collection.json).
 
@@ -110,6 +112,7 @@ cd ..
 go test ./... -cover
 govulncheck ./...
 wails build
+./scripts/test-sip-newman.sh --skip-build
 ```
 
 ## Local Files

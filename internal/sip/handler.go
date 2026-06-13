@@ -19,6 +19,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/profiles", s.handleProfiles)
 	mux.HandleFunc("/api/v1/profile/current", s.handleCurrentProfile)
 	mux.HandleFunc("/api/v1/profile", s.handleProfile)
+	mux.HandleFunc("/api/v1/redeems", s.handleRedeems)
 	return securityHeaders(requireLocalHost(mux))
 }
 
@@ -103,6 +104,45 @@ func (s *Service) handleProfile(w http.ResponseWriter, r *http.Request) {
 	writeResult(w, response, err)
 }
 
+func (s *Service) handleRedeems(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		response, err := s.Redeems(r.Context())
+		writeResult(w, response, err)
+	case http.MethodPost:
+		if !requireJSON(w, r) {
+			return
+		}
+		defer r.Body.Close()
+		if r.ContentLength > maxRequestBodyBytes {
+			writeError(w, http.StatusRequestEntityTooLarge, ErrInvalidRequest)
+			return
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
+		decoder.DisallowUnknownFields()
+		var request UpdateRedeemsRequest
+		if err := decoder.Decode(&request); err != nil {
+			var maxBytesError *http.MaxBytesError
+			if errors.As(err, &maxBytesError) {
+				writeError(w, http.StatusRequestEntityTooLarge, ErrInvalidRequest)
+				return
+			}
+			writeError(w, http.StatusBadRequest, ErrInvalidRequest)
+			return
+		}
+		var extra struct{}
+		if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, ErrInvalidRequest)
+			return
+		}
+		response, err := s.SetRedeems(r.Context(), request.Redeems)
+		writeResult(w, response, err)
+	default:
+		w.Header().Set("Allow", http.MethodGet+", "+http.MethodPost)
+		writeError(w, http.StatusMethodNotAllowed, ErrInvalidRequest)
+	}
+}
+
 func requireLocalHost(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := hostWithoutPort(r.Host)
@@ -169,6 +209,8 @@ func writeResult(w http.ResponseWriter, response any, err error) {
 		case errors.Is(err, ErrInvalidRequest):
 			writeError(w, http.StatusBadRequest, err)
 		case errors.Is(err, ErrProfileNotFound):
+			writeError(w, http.StatusNotFound, err)
+		case errors.Is(err, ErrRedeemNotFound):
 			writeError(w, http.StatusNotFound, err)
 		case errors.Is(err, ErrForbidden):
 			writeError(w, http.StatusForbidden, err)

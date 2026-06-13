@@ -9,6 +9,7 @@ import (
 	"TuberSwitch/internal/config"
 	"TuberSwitch/internal/obs"
 	"TuberSwitch/internal/secrets"
+	"TuberSwitch/internal/sip"
 )
 
 func TestSIPActivateProfileUsesExistingProfileActivationPath(t *testing.T) {
@@ -143,6 +144,125 @@ func TestSIPStatusDetailsExposeRuntimeDrawerFields(t *testing.T) {
 	}
 	if details.CurrentModeLabel != "3D VTuber Mode" || details.ActiveProfileLastUsed != "2026-06-10T12:00:00Z" {
 		t.Fatalf("profile details = %+v", details)
+	}
+}
+
+func TestSIPRedeemsReadAndPersistActiveProfileRewardState(t *testing.T) {
+	store := config.NewStore(filepath.Join(t.TempDir(), "config.json"))
+	app := &App{
+		store:  store,
+		logger: log.Default(),
+		cfg: config.Config{
+			ModeProfiles:    config.DefaultProfiles(),
+			Twitch:          config.TwitchConfig{AccessToken: "token"},
+			CurrentMode:     config.Mode3D,
+			ActiveProfileID: "gaming",
+			Profiles: []config.Profile{
+				{ID: config.DefaultProfileID, Name: "Default", Mode: config.ModePNG},
+				{
+					ID:   "gaming",
+					Name: "Gaming Stream",
+					Mode: config.Mode3D,
+					RewardMappings: []config.RewardMapping{
+						{RewardID: "headpat", RewardName: "Headpat", Is3DOnly: true, Manageable: true},
+						{RewardID: "hydrate", RewardName: "Hydrate", Is3DOnly: false, Manageable: true},
+					},
+				},
+			},
+		},
+	}
+
+	redeems, err := app.SIPRedeems(context.Background())
+	if err != nil {
+		t.Fatalf("SIPRedeems: %v", err)
+	}
+	if len(redeems) != 2 || redeems[0].ID != "headpat" || !redeems[0].Available || !redeems[0].Enabled {
+		t.Fatalf("redeems = %+v", redeems)
+	}
+
+	err = app.SIPSetRedeems(context.Background(), []sip.UpdateRedeemRequest{{ID: "headpat", Enabled: false}})
+	if err != nil {
+		t.Fatalf("SIPSetRedeems: %v", err)
+	}
+	if app.cfg.Profiles[1].RewardMappings[0].Is3DOnly {
+		t.Fatalf("profile reward was not updated: %+v", app.cfg.Profiles[1].RewardMappings)
+	}
+	if app.cfg.RewardMappings[0].Is3DOnly {
+		t.Fatalf("active reward snapshot was not updated: %+v", app.cfg.RewardMappings)
+	}
+
+	loaded, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Profiles[1].RewardMappings[0].Is3DOnly {
+		t.Fatalf("persisted reward was not updated: %+v", loaded.Profiles[1].RewardMappings)
+	}
+}
+
+func TestSIPRedeemsExposeUnavailableRewardsWhenTwitchDisconnected(t *testing.T) {
+	app := &App{
+		logger: log.Default(),
+		cfg: config.Config{
+			ModeProfiles:    config.DefaultProfiles(),
+			CurrentMode:     config.ModePNG,
+			ActiveProfileID: config.DefaultProfileID,
+			Profiles: []config.Profile{
+				{
+					ID:   config.DefaultProfileID,
+					Name: "Default",
+					Mode: config.ModePNG,
+					RewardMappings: []config.RewardMapping{
+						{RewardID: "headpat", RewardName: "Headpat", Is3DOnly: true, Manageable: true},
+						{RewardID: "hydrate", RewardName: "Hydrate", Is3DOnly: true, Manageable: false},
+					},
+				},
+			},
+		},
+	}
+
+	redeems, err := app.SIPRedeems(context.Background())
+	if err != nil {
+		t.Fatalf("SIPRedeems: %v", err)
+	}
+	if len(redeems) != 2 {
+		t.Fatalf("redeems = %+v", redeems)
+	}
+	for _, redeem := range redeems {
+		if !redeem.Enabled {
+			t.Fatalf("enabled intent should remain visible: %+v", redeems)
+		}
+		if redeem.Available {
+			t.Fatalf("redeem should be unavailable without Twitch connection: %+v", redeems)
+		}
+	}
+}
+
+func TestSIPSetRedeemsRejectsUnknownAndUnmanageableRewards(t *testing.T) {
+	app := &App{
+		logger: log.Default(),
+		cfg: config.Config{
+			ModeProfiles:    config.DefaultProfiles(),
+			CurrentMode:     config.ModePNG,
+			ActiveProfileID: config.DefaultProfileID,
+			Profiles: []config.Profile{
+				{
+					ID:   config.DefaultProfileID,
+					Name: "Default",
+					Mode: config.ModePNG,
+					RewardMappings: []config.RewardMapping{
+						{RewardID: "readonly", RewardName: "Hydrate", Is3DOnly: false, Manageable: false},
+					},
+				},
+			},
+		},
+	}
+
+	if err := app.SIPSetRedeems(context.Background(), []sip.UpdateRedeemRequest{{ID: "missing", Enabled: true}}); err != sip.ErrRedeemNotFound {
+		t.Fatalf("missing err = %v", err)
+	}
+	if err := app.SIPSetRedeems(context.Background(), []sip.UpdateRedeemRequest{{ID: "readonly", Enabled: true}}); err != sip.ErrInvalidRequest {
+		t.Fatalf("unmanageable err = %v", err)
 	}
 }
 

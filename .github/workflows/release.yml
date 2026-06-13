@@ -69,6 +69,10 @@ jobs:
           }
           Set-Content -LiteralPath build/bin/SHA256SUMS.txt -Value $lines
 
+      - name: Run SIP Newman smoke
+        shell: bash
+        run: ./scripts/test-sip-newman.sh --skip-build
+
       - name: Verify release assets
         shell: powershell
         run: |

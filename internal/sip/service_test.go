@@ -11,18 +11,20 @@ import (
 	"testing"
 )
 
-func TestSIPV11ContractForLivePanel(t *testing.T) {
+func TestSIPV1ContractForLivePanel(t *testing.T) {
 	service := newTestService()
 	handler := service.Handler()
 
 	appPayload := requestRawJSON(t, handler, http.MethodGet, "/api/v1/app", nil, http.StatusOK)
 	assertJSONFields(t, appPayload, map[string]any{
 		"appId":           "tuberswitch",
+		"appName":         "TuberSwitch",
 		"name":            "TuberSwitch",
 		"version":         "0.5.0",
 		"mode":            "standalone",
-		"protocolVersion": "1.1",
+		"protocolVersion": float64(1),
 	})
+	assertStringArrayContains(t, appPayload["capabilities"], ProfilesCapability, RedeemsCapability)
 
 	healthPayload := requestRawJSON(t, handler, http.MethodGet, "/api/v1/health", nil, http.StatusOK)
 	assertJSONFields(t, healthPayload, map[string]any{
@@ -32,9 +34,12 @@ func TestSIPV11ContractForLivePanel(t *testing.T) {
 
 	capabilitiesPayload := requestRawJSON(t, handler, http.MethodGet, "/api/v1/capabilities", nil, http.StatusOK)
 	assertJSONFields(t, capabilitiesPayload, map[string]any{
+		"protocolVersion":         float64(1),
 		"supportsProfiles":        true,
 		"supportsStatusReporting": true,
+		"supportsRedeems":         true,
 	})
+	assertStringArrayContains(t, capabilitiesPayload["capabilities"], ProfilesCapability, RedeemsCapability)
 
 	statusPayload := requestRawJSON(t, handler, http.MethodGet, "/api/v1/status", nil, http.StatusOK)
 	assertJSONFields(t, statusPayload, map[string]any{
@@ -43,6 +48,8 @@ func TestSIPV11ContractForLivePanel(t *testing.T) {
 		"healthy":                 true,
 		"activeProfile":           "Default",
 		"activeProfileId":         "default",
+		"activeProfileName":       "Default",
+		"mode":                    "png",
 		"activeMode":              "png",
 		"obsSummary":              "Connected: Gaming / PNG",
 		"obsConnected":            true,
@@ -57,6 +64,29 @@ func TestSIPV11ContractForLivePanel(t *testing.T) {
 		"currentModeLabel":        "PNGTuber Mode",
 		"activeProfileLastUsed":   "2026-06-10T12:00:00Z",
 	})
+}
+
+func TestRedeemsReadAndUpdate(t *testing.T) {
+	service := newTestService()
+
+	var listed RedeemsResponse
+	requestJSON(t, service.Handler(), http.MethodGet, "/api/v1/redeems", nil, http.StatusOK, &listed)
+	if len(listed.Redeems) != 2 || listed.Redeems[0].ID != "headpat" || !listed.Redeems[0].Available || !listed.Redeems[0].Enabled {
+		t.Fatalf("redeems = %+v", listed)
+	}
+
+	var updated SuccessResponse
+	requestJSON(t, service.Handler(), http.MethodPost, "/api/v1/redeems", UpdateRedeemsRequest{
+		Redeems: []UpdateRedeemRequest{{ID: "headpat", Enabled: false}},
+	}, http.StatusOK, &updated)
+	if !updated.Success {
+		t.Fatalf("updated = %+v", updated)
+	}
+
+	requestJSON(t, service.Handler(), http.MethodGet, "/api/v1/redeems", nil, http.StatusOK, &listed)
+	if listed.Redeems[0].Enabled {
+		t.Fatalf("redeems did not update = %+v", listed)
+	}
 }
 
 func TestAppReportsConfiguredRuntimeMode(t *testing.T) {
@@ -267,6 +297,10 @@ func newTestService() *Service {
 			{ID: "gaming", Name: "Gaming Stream", Mode: "3d"},
 		},
 		current: Profile{ID: "default", Name: "Default", Mode: "png"},
+		redeems: []Redeem{
+			{ID: "headpat", Name: "Headpat", Available: true, Enabled: true},
+			{ID: "hydrate", Name: "Hydrate", Available: true, Enabled: false},
+		},
 		details: StatusDetails{
 			OBSConnected:            true,
 			OBSSummary:              "Connected: Gaming / PNG",
@@ -289,6 +323,7 @@ type fakeController struct {
 	current    Profile
 	details    StatusDetails
 	detailsErr error
+	redeems    []Redeem
 	err        error
 }
 
@@ -315,6 +350,29 @@ func (f *fakeController) SIPActivateProfile(_ context.Context, name string) (Pro
 
 func (f fakeController) SIPStatusDetails(context.Context) (StatusDetails, error) {
 	return f.details, f.detailsErr
+}
+
+func (f fakeController) SIPRedeems(context.Context) ([]Redeem, error) {
+	return append([]Redeem(nil), f.redeems...), f.err
+}
+
+func (f *fakeController) SIPSetRedeems(_ context.Context, updates []UpdateRedeemRequest) error {
+	if f.err != nil {
+		return f.err
+	}
+	for _, update := range updates {
+		found := false
+		for i := range f.redeems {
+			if f.redeems[i].ID == update.ID {
+				f.redeems[i].Enabled = update.Enabled
+				found = true
+			}
+		}
+		if !found {
+			return ErrRedeemNotFound
+		}
+	}
+	return nil
 }
 
 func stringsEqualFold(left string, right string) bool {
@@ -362,6 +420,25 @@ func assertJSONFields(t *testing.T, payload map[string]any, fields map[string]an
 	for key, want := range fields {
 		if got := payload[key]; got != want {
 			t.Fatalf("%s = %#v, want %#v in %#v", key, got, want, payload)
+		}
+	}
+}
+
+func assertStringArrayContains(t *testing.T, value any, wants ...string) {
+	t.Helper()
+	items, ok := value.([]any)
+	if !ok {
+		t.Fatalf("value is %T, want []any", value)
+	}
+	present := map[string]bool{}
+	for _, item := range items {
+		if text, ok := item.(string); ok {
+			present[text] = true
+		}
+	}
+	for _, want := range wants {
+		if !present[want] {
+			t.Fatalf("value = %+v, missing %q", value, want)
 		}
 	}
 }

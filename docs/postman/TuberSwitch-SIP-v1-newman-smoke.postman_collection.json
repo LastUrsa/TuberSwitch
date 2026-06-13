@@ -1,0 +1,516 @@
+{
+  "info": {
+    "_postman_id": "tuberswitch-sip-newman-smoke",
+    "name": "TuberSwitch SIP v1 Newman Smoke",
+    "description": "Newman smoke checks for TuberSwitch SIP v1. Launch TuberSwitch in service mode before running, or use scripts/test-sip-newman.sh to build, launch, discover the SIP port, and run this collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:47040",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "SIP v1 Smoke",
+      "item": [
+        {
+          "name": "App Identity",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/app",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "app"
+              ]
+            },
+            "description": "Returns TuberSwitch identity, runtime mode, protocol version, and capability names."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "pm.test(\"sets SIP security headers\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Cache-Control\")).to.eql(\"no-store\");",
+                  "  pm.expect(pm.response.headers.get(\"X-Content-Type-Options\")).to.eql(\"nosniff\");",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test(\"identifies TuberSwitch SIP v1\", function () {",
+                  "  pm.expect(body.appId).to.eql(\"tuberswitch\");",
+                  "  pm.expect(body.appName || body.name).to.eql(\"TuberSwitch\");",
+                  "  pm.expect(body.version).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(body.protocolVersion).to.eql(1);",
+                  "  pm.expect(body.capabilities).to.include(\"profiles\");",
+                  "  pm.expect(body.capabilities).to.include(\"redeems\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health"
+              ]
+            },
+            "description": "Returns SIP readiness and lightweight application health."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+                  "const body = pm.response.json();",
+                  "pm.test(\"health is ready\", function () {",
+                  "  pm.expect(body.status).to.eql(\"ready\");",
+                  "  pm.expect(body.message).to.be.a(\"string\").and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Capabilities",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/capabilities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "capabilities"
+              ]
+            },
+            "description": "Returns supported SIP capability names and legacy capability flags."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"capabilities include profiles and redeems\", function () {",
+                  "  pm.expect(body.protocolVersion).to.eql(1);",
+                  "  pm.expect(body.capabilities).to.include(\"profiles\");",
+                  "  pm.expect(body.capabilities).to.include(\"redeems\");",
+                  "  pm.expect(body.supportsProfiles).to.eql(true);",
+                  "  pm.expect(body.supportsRedeems).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "status"
+              ]
+            },
+            "description": "Returns active profile and current mode information."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"status exposes active profile and mode\", function () {",
+                  "  pm.expect(body.state).to.eql(\"ready\");",
+                  "  pm.expect(body.healthy).to.eql(true);",
+                  "  pm.expect(body.activeProfileId).to.eql(\"default\");",
+                  "  pm.expect(body.activeProfileName || body.activeProfile).to.eql(\"Default\");",
+                  "  pm.expect([\"3d\", \"png\", \"unknown\"]).to.include(body.mode);",
+                  "  pm.expect(body.mode).to.eql(\"png\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Profiles",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/profiles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "profiles"
+              ]
+            },
+            "description": "Returns available TuberSwitch profile names."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"profiles include seeded profiles\", function () {",
+                  "  pm.expect(body.profiles).to.include(\"Default\");",
+                  "  pm.expect(body.profiles).to.include(\"Gaming Stream\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/profile/current",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "profile",
+                "current"
+              ]
+            },
+            "description": "Returns the active TuberSwitch profile id and name."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"current profile is seeded default\", function () {",
+                  "  pm.expect(body.id).to.eql(\"default\");",
+                  "  pm.expect(body.name).to.eql(\"Default\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Redeems",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/redeems",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "redeems"
+              ]
+            },
+            "description": "Returns known redeems and their current enabled and operational availability state."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"redeems include seeded rewards\", function () {",
+                  "  pm.expect(body.redeems).to.be.an(\"array\").with.length(2);",
+                  "  const headpat = body.redeems.find(function (redeem) { return redeem.id === \"headpat\"; });",
+                  "  pm.expect(headpat).to.be.an(\"object\");",
+                  "  pm.expect(headpat.name).to.eql(\"Headpat\");",
+                  "  pm.expect(headpat.available).to.be.a(\"boolean\");",
+                  "  pm.collectionVariables.set(\"headpatAvailable\", String(headpat.available));",
+                  "  pm.expect(headpat.enabled).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Disable Redeem",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"redeems\": [\n    {\n      \"id\": \"headpat\",\n      \"enabled\": false\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/redeems",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "redeems"
+              ]
+            },
+            "description": "Disables a seeded redeem through SIP."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"disable succeeds\", function () {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify Redeem Disabled",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/redeems",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "redeems"
+              ]
+            },
+            "description": "Verifies the disabled redeem state is visible through SIP."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"redeem is disabled\", function () {",
+                  "  const headpat = body.redeems.find(function (redeem) { return redeem.id === \"headpat\"; });",
+                  "  const expectedAvailable = pm.collectionVariables.get(\"headpatAvailable\") === \"true\";",
+                  "  pm.expect(headpat.available).to.eql(expectedAvailable);",
+                  "  pm.expect(headpat.enabled).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enable Redeem",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"redeems\": [\n    {\n      \"id\": \"headpat\",\n      \"enabled\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/redeems",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "redeems"
+              ]
+            },
+            "description": "Re-enables a seeded redeem through SIP."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"enable succeeds\", function () {",
+                  "  pm.expect(body.success).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify Redeem Enabled",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/redeems",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "redeems"
+              ]
+            },
+            "description": "Verifies the re-enabled redeem state is visible through SIP."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"redeem is enabled\", function () {",
+                  "  const headpat = body.redeems.find(function (redeem) { return redeem.id === \"headpat\"; });",
+                  "  const expectedAvailable = pm.collectionVariables.get(\"headpatAvailable\") === \"true\";",
+                  "  pm.expect(headpat.available).to.eql(expectedAvailable);",
+                  "  pm.expect(headpat.enabled).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

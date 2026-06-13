@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "01fe5731-1c0e-4a75-9c6d-cff542167119",
     "name": "TuberSwitch SIP v1",
-    "description": "Local TuberSwitch SIP v1.1 collection for LivePanel-compatible discovery, status, and profile activation. Start TuberSwitch first, then set baseUrl to the active SIP port, usually http://127.0.0.1:47040.",
+    "description": "Local TuberSwitch SIP v1 collection for LivePanel-compatible discovery, status, profile activation, and redeem state updates. Start TuberSwitch first, then set baseUrl to the active SIP port, usually http://127.0.0.1:47040.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -25,7 +25,7 @@
                 "app"
               ]
             },
-            "description": "Returns TuberSwitch identity, app version, runtime mode, and SIP protocol version."
+            "description": "Returns TuberSwitch identity, app version, runtime mode, SIP protocol version, and capability names."
           },
           "response": []
         },
@@ -65,7 +65,7 @@
                 "capabilities"
               ]
             },
-            "description": "Returns supported SIP feature flags."
+            "description": "Returns supported SIP capability names and legacy feature flags."
           },
           "response": []
         },
@@ -234,6 +234,65 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Redeems",
+      "item": [
+        {
+          "name": "List Redeems",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/redeems",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "redeems"
+              ]
+            },
+            "description": "Returns known TuberSwitch redeems and their current enabled and operational availability state."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Redeems",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"redeems\": [\n    {\n      \"id\": \"{{redeemId}}\",\n      \"enabled\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/redeems",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "redeems"
+              ]
+            },
+            "description": "Enables or disables existing TuberSwitch redeems by id."
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
@@ -245,6 +304,11 @@
     {
       "key": "profileName",
       "value": "Default",
+      "type": "string"
+    },
+    {
+      "key": "redeemId",
+      "value": "headpat",
       "type": "string"
     }
   ]
