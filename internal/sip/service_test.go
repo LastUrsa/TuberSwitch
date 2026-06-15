@@ -89,6 +89,29 @@ func TestRedeemsReadAndUpdate(t *testing.T) {
 	}
 }
 
+func TestRedeemsManualUpdate(t *testing.T) {
+	controller := &fakeController{
+		profiles: []Profile{{ID: "default", Name: "Default", Mode: "png"}},
+		current:  Profile{ID: "default", Name: "Default", Mode: "png"},
+		redeems:  []Redeem{{ID: "headpat", Name: "Headpat", Available: true, Enabled: true}},
+	}
+	service := newTestService()
+	service.controller = controller
+
+	var updated SuccessResponse
+	requestJSON(t, service.Handler(), http.MethodPost, "/api/v1/redeems/manual", UpdateRedeemsRequest{
+		Redeems: []UpdateRedeemRequest{{ID: "headpat", Enabled: false}},
+	}, http.StatusOK, &updated)
+	if !updated.Success {
+		t.Fatalf("updated = %+v", updated)
+	}
+	if len(controller.manualRedeemUpdates) != 1 || controller.manualRedeemUpdates[0].ID != "headpat" || controller.manualRedeemUpdates[0].Enabled {
+		t.Fatalf("manual updates = %+v", controller.manualRedeemUpdates)
+	}
+
+	requestJSON(t, service.Handler(), http.MethodGet, "/api/v1/redeems/manual", nil, http.StatusMethodNotAllowed, nil)
+}
+
 func TestAppReportsConfiguredRuntimeMode(t *testing.T) {
 	service := NewService(AppInfo{
 		AppID:    "tuberswitch",
@@ -319,12 +342,13 @@ func newTestService() *Service {
 }
 
 type fakeController struct {
-	profiles   []Profile
-	current    Profile
-	details    StatusDetails
-	detailsErr error
-	redeems    []Redeem
-	err        error
+	profiles            []Profile
+	current             Profile
+	details             StatusDetails
+	detailsErr          error
+	redeems             []Redeem
+	manualRedeemUpdates []UpdateRedeemRequest
+	err                 error
 }
 
 func (f fakeController) SIPProfiles(context.Context) ([]Profile, error) {
@@ -360,6 +384,26 @@ func (f *fakeController) SIPSetRedeems(_ context.Context, updates []UpdateRedeem
 	if f.err != nil {
 		return f.err
 	}
+	for _, update := range updates {
+		found := false
+		for i := range f.redeems {
+			if f.redeems[i].ID == update.ID {
+				f.redeems[i].Enabled = update.Enabled
+				found = true
+			}
+		}
+		if !found {
+			return ErrRedeemNotFound
+		}
+	}
+	return nil
+}
+
+func (f *fakeController) SIPApplyRedeemsManual(_ context.Context, updates []UpdateRedeemRequest) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.manualRedeemUpdates = append([]UpdateRedeemRequest(nil), updates...)
 	for _, update := range updates {
 		found := false
 		for i := range f.redeems {

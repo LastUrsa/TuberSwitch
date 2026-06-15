@@ -291,6 +291,41 @@
             "description": "Enables or disables existing TuberSwitch redeems by id."
           },
           "response": []
+        },
+        {
+          "name": "Apply Manual Redeems",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"redeems\": [\n    {\n      \"id\": \"{{redeemId}}\",\n      \"enabled\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/redeems/manual",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "redeems",
+                "manual"
+              ]
+            },
+            "description": "Temporarily enables or disables existing manageable TuberSwitch redeems through Twitch without saving profile intent."
+          },
+          "response": []
         }
       ]
     }

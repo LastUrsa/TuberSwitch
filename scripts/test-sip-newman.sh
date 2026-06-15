@@ -35,6 +35,21 @@ cleanup() {
 }
 trap cleanup EXIT
 
+is_smoke_candidate() {
+    local candidate="$1"
+    local current
+    local profiles
+    local redeems
+
+    current="$(curl --silent --fail --max-time 1 "${candidate}/api/v1/profile/current" 2>/dev/null || true)"
+    profiles="$(curl --silent --fail --max-time 1 "${candidate}/api/v1/profiles" 2>/dev/null || true)"
+    redeems="$(curl --silent --fail --max-time 1 "${candidate}/api/v1/redeems" 2>/dev/null || true)"
+
+    [[ "$current" == *'"id":"default"'* ]] &&
+        [[ "$profiles" == *'Gaming Stream'* ]] &&
+        [[ "$redeems" == *'"id":"headpat"'* ]]
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --no-launch)
@@ -232,20 +247,25 @@ if [[ -z "$base_url" ]]; then
         for port in {47040..47049}; do
             candidate="http://127.0.0.1:${port}"
             if curl --silent --fail --max-time 1 "${candidate}/api/v1/app" >/dev/null; then
+                if [[ "$launch" == true ]] && ! is_smoke_candidate "$candidate"; then
+                    continue
+                fi
                 base_url="$candidate"
                 break 2
             fi
         done
 
-        discovered="$(
-            powershell.exe -NoProfile -Command '$ErrorActionPreference = "SilentlyContinue"; foreach ($p in 47040..47049) { try { Invoke-RestMethod -Uri "http://127.0.0.1:$p/api/v1/app" -TimeoutSec 1 | Out-Null; Write-Output "http://127.0.0.1:$p"; exit 0 } catch {} }; exit 0' 2>/dev/null |
-                tr -d '\r' |
-                head -n 1
-        )"
-        if [[ -n "$discovered" ]]; then
-            base_url="$discovered"
-            run_newman_on_windows=true
-            break
+        if [[ "$launch" != true ]]; then
+            discovered="$(
+                powershell.exe -NoProfile -Command '$ErrorActionPreference = "SilentlyContinue"; foreach ($p in 47040..47049) { try { Invoke-RestMethod -Uri "http://127.0.0.1:$p/api/v1/app" -TimeoutSec 1 | Out-Null; Write-Output "http://127.0.0.1:$p"; exit 0 } catch {} }; exit 0' 2>/dev/null |
+                    tr -d '\r' |
+                    head -n 1
+            )"
+            if [[ -n "$discovered" ]]; then
+                base_url="$discovered"
+                run_newman_on_windows=true
+                break
+            fi
         fi
 
         sleep 1

@@ -509,6 +509,57 @@
               }
             }
           ]
+        },
+        {
+          "name": "Reject Unknown Manual Redeem",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"redeems\": [\n    {\n      \"id\": \"missing-redeem\",\n      \"enabled\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/redeems/manual",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "redeems",
+                "manual"
+              ]
+            },
+            "description": "Verifies manual redeem updates reject unknown ids before Twitch is required."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", function () { pm.response.to.have.status(404); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"unknown manual redeem returns RedeemNotFound\", function () {",
+                  "  pm.expect(body.success).to.eql(false);",
+                  "  pm.expect(body.error).to.eql(\"RedeemNotFound\");",
+                  "});"
+                ]
+              }
+            }
+          ]
         }
       ]
     }

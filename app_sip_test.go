@@ -266,6 +266,132 @@ func TestSIPSetRedeemsRejectsUnknownAndUnmanageableRewards(t *testing.T) {
 	}
 }
 
+func TestSIPApplyRedeemsManualAppliesThroughTwitchWithoutSavingProfileIntent(t *testing.T) {
+	store := config.NewStore(filepath.Join(t.TempDir(), "config.json"))
+	fakeTwitch := &fakeTwitchService{}
+	secretStore := &fakeSecretStore{}
+	app := &App{
+		store:       store,
+		secretStore: secretStore,
+		logger:      log.Default(),
+		twitch:      fakeTwitch,
+		cfg: config.Config{
+			ModeProfiles:    config.DefaultProfiles(),
+			Twitch:          config.TwitchConfig{ClientID: "client", AccessToken: "old-token"},
+			CurrentMode:     config.ModePNG,
+			ActiveProfileID: "gaming",
+			Profiles: []config.Profile{
+				{ID: config.DefaultProfileID, Name: "Default", Mode: config.ModePNG},
+				{
+					ID:   "gaming",
+					Name: "Gaming Stream",
+					Mode: config.ModePNG,
+					RewardMappings: []config.RewardMapping{
+						{RewardID: "headpat", RewardName: "Headpat", Enabled: true, Manageable: true},
+					},
+				},
+			},
+		},
+	}
+
+	if err := store.Save(app.cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if err := app.SIPApplyRedeemsManual(context.Background(), []sip.UpdateRedeemRequest{{ID: "headpat", Enabled: false}}); err != nil {
+		t.Fatalf("SIPApplyRedeemsManual: %v", err)
+	}
+
+	if len(fakeTwitch.rewardCalls) != 1 || fakeTwitch.rewardCalls[0].rewardID != "headpat" || fakeTwitch.rewardCalls[0].enabled {
+		t.Fatalf("reward calls = %#v", fakeTwitch.rewardCalls)
+	}
+	if !app.cfg.Profiles[1].RewardMappings[0].Enabled {
+		t.Fatalf("profile reward intent was mutated: %+v", app.cfg.Profiles[1].RewardMappings)
+	}
+	if app.cfg.RewardMappings != nil {
+		t.Fatalf("active reward snapshot was unexpectedly mutated: %+v", app.cfg.RewardMappings)
+	}
+	if secretStore.twitchTokens.AccessToken != "token" {
+		t.Fatalf("refreshed token was not saved: %+v", secretStore.twitchTokens)
+	}
+	loaded, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !loaded.Profiles[1].RewardMappings[0].Enabled {
+		t.Fatalf("manual redeem update persisted profile intent: %+v", loaded.Profiles[1].RewardMappings)
+	}
+}
+
+func TestSIPApplyRedeemsManualValidatesAllUpdatesBeforeTwitchChanges(t *testing.T) {
+	fakeTwitch := &fakeTwitchService{}
+	app := &App{
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
+		twitch:      fakeTwitch,
+		cfg: config.Config{
+			ModeProfiles:    config.DefaultProfiles(),
+			Twitch:          config.TwitchConfig{AccessToken: "token"},
+			CurrentMode:     config.ModePNG,
+			ActiveProfileID: config.DefaultProfileID,
+			Profiles: []config.Profile{
+				{
+					ID:   config.DefaultProfileID,
+					Name: "Default",
+					Mode: config.ModePNG,
+					RewardMappings: []config.RewardMapping{
+						{RewardID: "headpat", RewardName: "Headpat", Enabled: true, Manageable: true},
+						{RewardID: "readonly", RewardName: "Hydrate", Enabled: true, Manageable: false},
+					},
+				},
+			},
+		},
+	}
+
+	if err := app.SIPApplyRedeemsManual(context.Background(), []sip.UpdateRedeemRequest{{ID: "headpat", Enabled: false}, {ID: "missing", Enabled: true}}); err != sip.ErrRedeemNotFound {
+		t.Fatalf("missing err = %v", err)
+	}
+	if len(fakeTwitch.rewardCalls) != 0 {
+		t.Fatalf("unexpected calls after missing redeem: %#v", fakeTwitch.rewardCalls)
+	}
+	if err := app.SIPApplyRedeemsManual(context.Background(), []sip.UpdateRedeemRequest{{ID: "headpat", Enabled: false}, {ID: "readonly", Enabled: false}}); err != sip.ErrInvalidRequest {
+		t.Fatalf("readonly err = %v", err)
+	}
+	if len(fakeTwitch.rewardCalls) != 0 {
+		t.Fatalf("unexpected calls after readonly redeem: %#v", fakeTwitch.rewardCalls)
+	}
+}
+
+func TestSIPApplyRedeemsManualRequiresTwitchAuthentication(t *testing.T) {
+	fakeTwitch := &fakeTwitchService{}
+	app := &App{
+		secretStore: &fakeSecretStore{},
+		logger:      log.Default(),
+		twitch:      fakeTwitch,
+		cfg: config.Config{
+			ModeProfiles:    config.DefaultProfiles(),
+			CurrentMode:     config.ModePNG,
+			ActiveProfileID: config.DefaultProfileID,
+			Profiles: []config.Profile{
+				{
+					ID:   config.DefaultProfileID,
+					Name: "Default",
+					Mode: config.ModePNG,
+					RewardMappings: []config.RewardMapping{
+						{RewardID: "headpat", RewardName: "Headpat", Enabled: true, Manageable: true},
+					},
+				},
+			},
+		},
+	}
+
+	if err := app.SIPApplyRedeemsManual(context.Background(), []sip.UpdateRedeemRequest{{ID: "headpat", Enabled: false}}); err == nil {
+		t.Fatalf("expected Twitch auth error")
+	}
+	if len(fakeTwitch.rewardCalls) != 0 {
+		t.Fatalf("unexpected calls without auth: %#v", fakeTwitch.rewardCalls)
+	}
+}
+
 func TestSIPStatusDetailsReportUnavailableConfiguration(t *testing.T) {
 	app := &App{
 		logger: log.Default(),

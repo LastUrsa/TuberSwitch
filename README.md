@@ -77,6 +77,7 @@ SIP v1 is exposed on localhost only across ports `47040-47049`:
 - `POST /api/v1/profile`
 - `GET /api/v1/redeems`
 - `POST /api/v1/redeems`
+- `POST /api/v1/redeems/manual`
 
 Profiles and existing redeem state are the SIP control surface. Status includes compact OBS, redeem, and app detection summaries for local dashboards, but SIP does not expose configuration APIs for OBS scenes, reward definitions, app detection rules, or profile CRUD.
 
