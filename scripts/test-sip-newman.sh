@@ -258,8 +258,13 @@ if [[ -z "$base_url" ]]; then
 fi
 
 echo "Running SIP Newman smoke checks against ${base_url}"
+collection_path="$collection"
+if [[ "$collection_path" != /* ]]; then
+    collection_path="$repo_root/$collection_path"
+fi
+
 if [[ "$run_newman_on_windows" == true ]]; then
-    collection_windows="$(to_windows_path "$collection" | tr -d '\r' | head -n 1)"
+    collection_windows="$(to_windows_path "$collection_path" | tr -d '\r' | head -n 1)"
     powershell.exe -NoProfile -Command "\$ErrorActionPreference = 'Stop'; Set-Location \$env:TEMP; & npx.cmd --yes '${newman_package}' run '${collection_windows}' --env-var 'baseUrl=${base_url}'"
 elif command -v newman >/dev/null 2>&1; then
     newman_cmd=(newman)
@@ -271,5 +276,5 @@ else
 fi
 
 if [[ "$run_newman_on_windows" != true ]]; then
-    "${newman_cmd[@]}" run "$collection" --env-var "baseUrl=${base_url}"
+    "${newman_cmd[@]}" run "$collection_path" --env-var "baseUrl=${base_url}"
 fi
