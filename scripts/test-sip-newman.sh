@@ -128,13 +128,13 @@ if [[ "$launch" == true ]]; then
     {
       \"rewardId\": \"headpat\",
       \"rewardName\": \"Headpat\",
-      \"is3DOnly\": true,
+      \"enabled\": true,
       \"manageable\": true
     },
     {
       \"rewardId\": \"hydrate\",
       \"rewardName\": \"Hydrate\",
-      \"is3DOnly\": false,
+      \"enabled\": false,
       \"manageable\": true
     }
   ],
@@ -149,13 +149,13 @@ if [[ "$launch" == true ]]; then
         {
           \"rewardId\": \"headpat\",
           \"rewardName\": \"Headpat\",
-          \"is3DOnly\": true,
+          \"enabled\": true,
           \"manageable\": true
         },
         {
           \"rewardId\": \"hydrate\",
           \"rewardName\": \"Hydrate\",
-          \"is3DOnly\": false,
+          \"enabled\": false,
           \"manageable\": true
         }
       ]
@@ -170,13 +170,13 @@ if [[ "$launch" == true ]]; then
         {
           \"rewardId\": \"headpat\",
           \"rewardName\": \"Headpat\",
-          \"is3DOnly\": true,
+          \"enabled\": true,
           \"manageable\": true
         },
         {
           \"rewardId\": \"hydrate\",
           \"rewardName\": \"Hydrate\",
-          \"is3DOnly\": true,
+          \"enabled\": true,
           \"manageable\": true
         }
       ]
