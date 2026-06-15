@@ -518,6 +518,60 @@ footer {
   box-shadow: var(--shadow-sm);
 }
 
+.status-notice {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface-raised) 88%, white 12%);
+  box-shadow: var(--shadow-sm);
+}
+
+.status-notice.info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.status-notice.success {
+  border-color: color-mix(in srgb, var(--success) 54%, var(--border) 46%);
+}
+
+.status-notice.warning {
+  border-color: color-mix(in srgb, var(--warning) 66%, var(--border) 34%);
+}
+
+.status-notice.error {
+  border-color: var(--danger);
+  background: var(--danger-surface);
+}
+
+.status-notice ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--color-neutral-300);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.status-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid color-mix(in srgb, var(--text) 26%, transparent);
+  border-top-color: var(--text);
+  border-radius: 999px;
+  animation: status-spin 800ms linear infinite;
+}
+
+@keyframes status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .settings-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -699,6 +753,11 @@ footer {
 }
 
 label {
+  display: grid;
+  gap: 8px;
+}
+
+.field-stack {
   display: grid;
   gap: 8px;
 }

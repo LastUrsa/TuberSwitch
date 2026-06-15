@@ -122,7 +122,7 @@ func (a *App) SIPRedeems(context.Context) ([]sip.Redeem, error) {
 			ID:        mapping.RewardID,
 			Name:      mapping.RewardName,
 			Available: mapping.Manageable && twitchReady,
-			Enabled:   mapping.Is3DOnly,
+			Enabled:   mapping.Enabled,
 		})
 	}
 	return redeems, nil
@@ -205,7 +205,8 @@ func updateSIPRewardMappings(mappings []config.RewardMapping, updateByID map[str
 		if enabled && !mappings[i].Manageable {
 			return sip.ErrInvalidRequest
 		}
-		mappings[i].Is3DOnly = enabled
+		mappings[i].Enabled = enabled
+		mappings[i].Is3DOnly = false
 	}
 	return nil
 }

@@ -35,6 +35,8 @@ export function SelectProfile(arg1:string):Promise<app.ActionResult>;
 
 export function SetReward3DOnly(arg1:string,arg2:boolean):Promise<app.ActionResult>;
 
+export function SetRewardEnabled(arg1:string,arg2:boolean):Promise<app.ActionResult>;
+
 export function StartTwitchLogin():Promise<app.ActionResult>;
 
 export function SyncOBS():Promise<app.ActionResult>;

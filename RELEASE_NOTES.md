@@ -17,6 +17,10 @@ Release notes are part of the TuberSwitch release process. Before pushing a rele
 
 ### Maintenance
 
+- Adds visible action status, warning, and error feedback for settings, profile, Twitch, OBS sync, and update workflows.
+- Fixes failed save-then-action flows so controls re-enable and the original validation error remains visible.
+- Updates reward mappings from legacy `is3DOnly` intent to profile-level `enabled` intent, including SIP redeem state and automatic migration for existing configs.
+- Keeps profile save-as validation errors in the in-app dialog, removes duplicate recent profile options, and tightens numeric validation for OBS and app detection settings.
 - Updated release metadata to `0.6.0`.
 - Aligns Windows installer metadata and default install root with the Starsong Installer Standard.
 

@@ -54,7 +54,6 @@ type TwitchReward struct {
 	ID         string `json:"id"`
 	Title      string `json:"title"`
 	Enabled    bool   `json:"enabled"`
-	Is3DOnly   bool   `json:"is3DOnly"`
 	Manageable bool   `json:"manageable"`
 }
 

@@ -113,7 +113,7 @@ func TestNormalizeCreatesDefaultProfileFromCurrentConfiguration(t *testing.T) {
 	cfg := Default()
 	cfg.CurrentMode = Mode3D
 	cfg.SceneMappings = []SceneMapping{{Scene: "Main", Enabled: true, VTuberSource: "VTuber"}}
-	cfg.RewardMappings = []RewardMapping{{RewardID: "dance", RewardName: "Dance", Is3DOnly: true, Manageable: true}}
+	cfg.RewardMappings = []RewardMapping{{RewardID: "dance", RewardName: "Dance", Enabled: true, Manageable: true}}
 
 	cfg.Normalize()
 
@@ -129,6 +129,17 @@ func TestNormalizeCreatesDefaultProfileFromCurrentConfiguration(t *testing.T) {
 	}
 	if len(profile.RewardMappings) != 1 || profile.RewardMappings[0].RewardID != "dance" {
 		t.Fatalf("profile reward mappings = %#v", profile.RewardMappings)
+	}
+}
+
+func TestNormalizeMigratesLegacy3DOnlyRewardMappingsToEnabled(t *testing.T) {
+	cfg := Default()
+	cfg.RewardMappings = []RewardMapping{{RewardID: "dance", RewardName: "Dance", Is3DOnly: true, Manageable: true}}
+
+	cfg.Normalize()
+
+	if len(cfg.RewardMappings) != 1 || !cfg.RewardMappings[0].Enabled || cfg.RewardMappings[0].Is3DOnly {
+		t.Fatalf("reward mapping was not migrated: %#v", cfg.RewardMappings)
 	}
 }
 
@@ -148,7 +159,7 @@ func TestStoreLoadCreatesDefaultAndSaveRoundTrips(t *testing.T) {
 	}
 
 	cfg.Twitch.ChannelName = "Streamer"
-	cfg.RewardMappings = []RewardMapping{{RewardID: "1", RewardName: "Dance", Is3DOnly: true, Manageable: true}}
+	cfg.RewardMappings = []RewardMapping{{RewardID: "1", RewardName: "Dance", Enabled: true, Manageable: true}}
 	cfg.Profiles = []Profile{{ID: DefaultProfileID, Name: "Default", Mode: ModePNG}, {ID: "gaming", Name: "Gaming", Mode: Mode3D}}
 	cfg.ActiveProfileID = "gaming"
 	cfg.AppDetection.Enabled = true
@@ -167,6 +178,9 @@ func TestStoreLoadCreatesDefaultAndSaveRoundTrips(t *testing.T) {
 	}
 	if len(loaded.RewardMappings) != 1 || !loaded.RewardMappings[0].Manageable {
 		t.Fatalf("reward mappings = %#v", loaded.RewardMappings)
+	}
+	if !loaded.RewardMappings[0].Enabled {
+		t.Fatalf("reward mapping should be enabled: %#v", loaded.RewardMappings)
 	}
 	if loaded.ActiveProfileID != "gaming" || len(loaded.Profiles) != 2 {
 		t.Fatalf("profiles not round-tripped: %#v active=%q", loaded.Profiles, loaded.ActiveProfileID)

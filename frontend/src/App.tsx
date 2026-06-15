@@ -17,7 +17,7 @@ import {
   SaveProfile,
   SaveProfileAs,
   SelectProfile,
-  SetReward3DOnly,
+  SetRewardEnabled,
   StartTwitchLogin,
   SyncOBS,
 } from '../wailsjs/go/main/App';
@@ -69,7 +69,7 @@ type SceneMapping = {
 type RewardMapping = {
   rewardId: string;
   rewardName: string;
-  is3DOnly: boolean;
+  enabled: boolean;
   manageable: boolean;
 };
 
@@ -132,8 +132,15 @@ type TwitchReward = {
   id: string;
   title: string;
   enabled: boolean;
-  is3DOnly: boolean;
   manageable: boolean;
+};
+
+type NoticeKind = 'success' | 'warning' | 'error';
+
+type Notice = {
+  kind: NoticeKind;
+  message: string;
+  details: string[];
 };
 
 type UpdateInfo = {
@@ -160,7 +167,8 @@ function App() {
   const [rewards, setRewards] = useState<TwitchReward[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState('');
-  const [errors, setErrors] = useState<string[]>([]);
+  const [, setErrors] = useState<string[]>([]);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [showSelectedScenesOnly, setShowSelectedScenesOnly] = useState(false);
   const [newRewardTitle, setNewRewardTitle] = useState('');
   const [newRewardCost, setNewRewardCost] = useState(1000);
@@ -256,17 +264,21 @@ function App() {
   async function run(label: string, action: () => Promise<ActionResult>) {
     setBusy(label);
     setErrors([]);
+    setNotice(null);
     try {
       const result = await action();
       setStatus(result.newStatus as unknown as Status);
       setDraft(structuredClone((result.newStatus as unknown as Status).config));
       setErrors(result.errors || []);
+      setNotice(noticeFromResult(result));
       setRewards((await GetTwitchRewards()) as TwitchReward[]);
       setObsPassword('');
       setObsPasswordDirty(false);
       return result;
     } catch (error) {
-      setErrors([String(error)]);
+      const message = String(error);
+      setErrors([message]);
+      setNotice({kind: 'error', message, details: []});
     } finally {
       setBusy('');
     }
@@ -275,11 +287,14 @@ function App() {
   async function loadInventory(sceneName?: string) {
     setBusy('Loading OBS');
     setErrors([]);
+    setNotice(null);
     try {
       const nextInventory = await GetOBSInventory(sceneName || draft?.sources.scene || '') as OBSInventory;
       setInventory(nextInventory);
     } catch (error) {
-      setErrors([String(error)]);
+      const message = String(error);
+      setErrors([message]);
+      setNotice({kind: 'error', message, details: []});
     } finally {
       setBusy('');
     }
@@ -309,8 +324,15 @@ function App() {
       setProfileDialogError('Profile name is required.');
       return;
     }
-    closeProfileDialog();
-    await run('Saving profile', () => SaveProfileAs(trimmedName, buildSettingsInput(draft, obsPassword, obsPasswordDirty) as never) as unknown as Promise<ActionResult>);
+    setProfileDialogError('');
+    const result = await run('Saving profile', () => SaveProfileAs(trimmedName, buildSettingsInput(draft, obsPassword, obsPasswordDirty) as never) as unknown as Promise<ActionResult>);
+    if (result?.ok) {
+      closeProfileDialog();
+      return;
+    }
+    setNotice(null);
+    const message = result?.errors?.[0] || result?.message || 'Profile save failed.';
+    setProfileDialogError(message);
   }
 
   async function deleteCurrentProfile() {
@@ -343,19 +365,24 @@ function App() {
     if (!draft) return;
     setBusy('Saving settings');
     setErrors([]);
+    setNotice(null);
     try {
       const saved = await SaveConfig(buildSettingsInput(draft, obsPassword, obsPasswordDirty) as never) as unknown as ActionResult;
       setStatus(saved.newStatus as unknown as Status);
       setDraft(structuredClone((saved.newStatus as unknown as Status).config));
       setObsPassword('');
       setObsPasswordDirty(false);
+      setNotice(noticeFromResult(saved));
       if (!saved.ok) {
         setErrors(saved.errors || [saved.message]);
+        setBusy('');
         return saved;
       }
       return await run(label, action);
     } catch (error) {
-      setErrors([String(error)]);
+      const message = String(error);
+      setErrors([message]);
+      setNotice({kind: 'error', message, details: []});
       setBusy('');
       return undefined;
     }
@@ -365,26 +392,31 @@ function App() {
     if (!draft) return;
     setBusy('Saving profile');
     setErrors([]);
+    setNotice(null);
     try {
       const saved = await SaveProfile(buildSettingsInput(draft, obsPassword, obsPasswordDirty) as never) as unknown as ActionResult;
       setStatus(saved.newStatus as unknown as Status);
       setDraft(structuredClone((saved.newStatus as unknown as Status).config));
       setObsPassword('');
       setObsPasswordDirty(false);
+      setNotice(noticeFromResult(saved));
       if (!saved.ok) {
         setErrors(saved.errors || [saved.message]);
+        setBusy('');
         return saved;
       }
       return await run(label, action);
     } catch (error) {
-      setErrors([String(error)]);
+      const message = String(error);
+      setErrors([message]);
+      setNotice({kind: 'error', message, details: []});
       setBusy('');
       return undefined;
     }
   }
 
   async function updateReward(rewardID: string, checked: boolean) {
-    await run('Saving reward', () => SetReward3DOnly(rewardID, checked) as unknown as Promise<ActionResult>);
+    await run('Saving reward', () => SetRewardEnabled(rewardID, checked) as unknown as Promise<ActionResult>);
   }
 
   async function createReward() {
@@ -451,7 +483,9 @@ function App() {
       const result = await CheckForUpdates();
       setUpdateInfo(result as unknown as UpdateInfo);
     } catch (error) {
-      setErrors([`Update check failed: ${String(error)}`]);
+      const message = `Update check failed: ${String(error)}`;
+      setErrors([message]);
+      setNotice({kind: 'error', message, details: []});
     } finally {
       setUpdateBusy(false);
     }
@@ -537,9 +571,6 @@ function App() {
                       {remainingProfiles.map((profile) => (
                         <option key={profile.id} value={profile.id}>{profile.name}</option>
                       ))}
-                      {recentProfiles.map((profile) => (
-                        <option key={`all-${profile.id}`} value={profile.id}>{profile.name}</option>
-                      ))}
                     </optgroup>
                   </select>
                 </label>
@@ -562,11 +593,7 @@ function App() {
         </div>
       </section>
 
-      {errors.length > 0 && (
-        <section className="error-list">
-          {errors.map((error) => <div key={error}>{error}</div>)}
-        </section>
-      )}
+      {!settingsOpen && <StatusNotice busy={busy} notice={notice}/>}
 
       {settingsOpen && draft && (
         <div className="settings-modal-backdrop" onClick={closeSettings}>
@@ -631,6 +658,8 @@ function App() {
                   <small>Version and updates</small>
                 </button>
               </div>
+
+              <StatusNotice busy={busy} notice={notice}/>
 
               {settingsTab === 'general' && (
                 <section className="settings-panel general-settings-panel">
@@ -920,9 +949,6 @@ function App() {
                             {remainingProfiles.map((profile) => (
                               <option key={profile.id} value={profile.id}>{profile.name}</option>
                             ))}
-                            {recentProfiles.map((profile) => (
-                              <option key={`all-${profile.id}`} value={profile.id}>{profile.name}</option>
-                            ))}
                           </optgroup>
                         </select>
                       </label>
@@ -946,7 +972,9 @@ function App() {
                       </button>
                       <button onClick={async () => {
                         const result = await saveProfileThen('Syncing OBS', () => SyncOBS() as unknown as Promise<ActionResult>);
-                        await loadInventory(result?.newStatus?.config?.sceneMappings?.[0]?.scene || '');
+                        if (result?.ok) {
+                          await loadInventory(result.newStatus?.config?.sceneMappings?.[0]?.scene || '');
+                        }
                       }} disabled={!!busy}>
                         <ButtonLabel icon={<RefreshIcon/>}>Sync Scenes & Sources</ButtonLabel>
                       </button>
@@ -1008,9 +1036,9 @@ function App() {
                     <CollapsibleSection title="Create Reward" open={createRewardOpen} onToggle={setCreateRewardOpen}>
                       <div className="create-reward">
                         <TextInput label="New Reward Name" value={newRewardTitle} onChange={setNewRewardTitle}/>
-                        <NumberInput label="Cost" value={newRewardCost} onChange={setNewRewardCost}/>
+                        <NumberInput label="Cost" value={newRewardCost} min={1} invalid={newRewardCost < 1} helpText="Cost must be at least 1." onChange={setNewRewardCost}/>
                         <TextInput label="Prompt (optional)" value={newRewardPrompt} onChange={setNewRewardPrompt}/>
-                        <button className="highlight-button" onClick={createReward} disabled={!!busy || !newRewardTitle.trim()}>
+                        <button className="highlight-button" onClick={createReward} disabled={!!busy || !newRewardTitle.trim() || newRewardCost < 1}>
                           <ButtonLabel icon={<PlusIcon/>}>Create Reward</ButtonLabel>
                         </button>
                       </div>
@@ -1031,7 +1059,7 @@ function App() {
                         {manageableRewards.map((reward) => (
                           <label className="reward-row" key={reward.id}>
                             <span>{reward.title}</span>
-                            <input type="checkbox" checked={reward.is3DOnly} onChange={(event) => updateReward(reward.id, event.currentTarget.checked)}/>
+                            <input type="checkbox" checked={reward.enabled} onChange={(event) => updateReward(reward.id, event.currentTarget.checked)}/>
                           </label>
                         ))}
                       </div>
@@ -1149,11 +1177,13 @@ function ProcessNameField({
 
 function NumberInput({label, value, onChange, info, min, helpText, invalid}: {label: string; value: number; onChange: (value: number) => void; info?: ReactNode; min?: number; helpText?: string; invalid?: boolean}) {
   return (
-    <label>
-      <FieldLabel text={label} info={info}/>
-      <input className={invalid ? 'field-control invalid' : 'field-control'} aria-invalid={invalid || undefined} type="number" min={min} value={value || 0} onChange={(event) => onChange(Number(event.currentTarget.value))}/>
+    <div className="field-stack">
+      <label>
+        <FieldLabel text={label} info={info}/>
+        <input className={invalid ? 'field-control invalid' : 'field-control'} aria-invalid={invalid || undefined} type="number" min={min} value={value || 0} onChange={(event) => onChange(Number(event.currentTarget.value))}/>
+      </label>
       {helpText && <span className="field-help">{helpText}</span>}
-    </label>
+    </div>
   );
 }
 
@@ -1194,6 +1224,29 @@ function EmptyStateRow({title, body}: {title: string; body: string}) {
       <strong>{title}</strong>
       <span>{body}</span>
     </div>
+  );
+}
+
+function StatusNotice({busy, notice}: {busy: string; notice: Notice | null}) {
+  if (busy) {
+    return (
+      <section className="status-notice info" role="status" aria-live="polite">
+        <span className="status-spinner" aria-hidden="true"/>
+        <strong>{busy}...</strong>
+      </section>
+    );
+  }
+  if (!notice) return null;
+
+  return (
+    <section className={`status-notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'} aria-live="polite">
+      <strong>{notice.message}</strong>
+      {notice.details.length > 0 && (
+        <ul>
+          {notice.details.map((detail) => <li key={detail}>{detail}</li>)}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -1260,7 +1313,10 @@ function ProfileActionDialog({
     : 'Delete Profile';
 
   return (
-    <div className="dialog-backdrop" onClick={onClose}>
+    <div className="dialog-backdrop" onClick={(event) => {
+      event.stopPropagation();
+      onClose();
+    }}>
       <section
         className="profile-action-dialog"
         role="dialog"
@@ -1391,7 +1447,10 @@ function ProcessPickerDialog({
   if (!open) return null;
 
   return (
-    <div className="dialog-backdrop" onClick={onClose}>
+    <div className="dialog-backdrop" onClick={(event) => {
+      event.stopPropagation();
+      onClose();
+    }}>
       <section
         className="process-picker-dialog"
         role="dialog"
@@ -1553,6 +1612,29 @@ function buildSettingsInput(config: Config, obsPassword: string, updateObsPasswo
     config,
     obsPassword,
     updateObsPassword,
+  };
+}
+
+function noticeFromResult(result: ActionResult): Notice {
+  if (!result.ok) {
+    const details = (result.errors || []).filter((detail) => detail !== result.message);
+    return {
+      kind: 'error',
+      message: result.message || 'Action failed',
+      details,
+    };
+  }
+  if (result.warnings?.length) {
+    return {
+      kind: 'warning',
+      message: result.message || 'Action completed with warnings',
+      details: result.warnings,
+    };
+  }
+  return {
+    kind: 'success',
+    message: result.message || 'Done',
+    details: [],
   };
 }
 

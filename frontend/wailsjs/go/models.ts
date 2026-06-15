@@ -307,7 +307,6 @@ export namespace app {
 	    id: string;
 	    title: string;
 	    enabled: boolean;
-	    is3DOnly: boolean;
 	    manageable: boolean;
 
 	    static createFrom(source: any = {}) {
@@ -319,7 +318,6 @@ export namespace app {
 	        this.id = source["id"];
 	        this.title = source["title"];
 	        this.enabled = source["enabled"];
-	        this.is3DOnly = source["is3DOnly"];
 	        this.manageable = source["manageable"];
 	    }
 	}
@@ -396,6 +394,7 @@ export namespace config {
 	export class RewardMapping {
 	    rewardId: string;
 	    rewardName: string;
+	    enabled: boolean;
 	    is3DOnly: boolean;
 	    manageable: boolean;
 
@@ -407,6 +406,7 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.rewardId = source["rewardId"];
 	        this.rewardName = source["rewardName"];
+	        this.enabled = source["enabled"];
 	        this.is3DOnly = source["is3DOnly"];
 	        this.manageable = source["manageable"];
 	    }
@@ -499,4 +499,3 @@ export namespace config {
 
 
 }
-

@@ -123,7 +123,7 @@ func TestApplyOBSModeTogglesSelectedSourcesAcrossScenes(t *testing.T) {
 	}
 }
 
-func TestApplyTwitchModeOnlyUpdatesManageable3DRewards(t *testing.T) {
+func TestApplyTwitchModeOnlyUpdatesManageableEnabledRewards(t *testing.T) {
 	fakeTwitch := &fakeTwitchService{}
 	app := &App{
 		twitch:      fakeTwitch,
@@ -133,9 +133,9 @@ func TestApplyTwitchModeOnlyUpdatesManageable3DRewards(t *testing.T) {
 			Twitch:       config.TwitchConfig{ClientID: "client", AccessToken: "token"},
 			ModeProfiles: config.DefaultProfiles(),
 			RewardMappings: []config.RewardMapping{
-				{RewardID: "manageable", RewardName: "Dance", Is3DOnly: true, Manageable: true},
-				{RewardID: "readonly", RewardName: "Hydrate", Is3DOnly: true, Manageable: false},
-				{RewardID: "not-3d", RewardName: "Hello", Is3DOnly: false, Manageable: true},
+				{RewardID: "manageable", RewardName: "Dance", Enabled: true, Manageable: true},
+				{RewardID: "readonly", RewardName: "Hydrate", Enabled: true, Manageable: false},
+				{RewardID: "disabled", RewardName: "Hello", Enabled: false, Manageable: true},
 			},
 		},
 	}
@@ -153,7 +153,7 @@ func TestApplyTwitchModeOnlyUpdatesManageable3DRewards(t *testing.T) {
 	}
 }
 
-func TestSetReward3DOnlyBlocksUnmanageableReward(t *testing.T) {
+func TestSetRewardEnabledBlocksUnmanageableReward(t *testing.T) {
 	app := &App{
 		obs:    &fakeOBSService{},
 		store:  config.NewStore(filepath.Join(t.TempDir(), "config.json")),
@@ -165,16 +165,16 @@ func TestSetReward3DOnlyBlocksUnmanageableReward(t *testing.T) {
 		},
 	}
 
-	result := app.SetReward3DOnly("readonly", true)
+	result := app.SetRewardEnabled("readonly", true)
 	if result.OK {
 		t.Fatalf("expected failure")
 	}
-	if app.cfg.RewardMappings[0].Is3DOnly {
-		t.Fatalf("unmanageable reward was marked 3D-only")
+	if app.cfg.RewardMappings[0].Enabled {
+		t.Fatalf("unmanageable reward was enabled")
 	}
 }
 
-func TestRefreshRewardsMarksManageableAndClearsReadonly3DOnly(t *testing.T) {
+func TestRefreshRewardsMarksManageableAndClearsReadonlyEnabled(t *testing.T) {
 	fakeTwitch := &fakeTwitchService{
 		allRewards: []twitch.Reward{
 			{ID: "manageable", Title: "Dance"},
@@ -193,7 +193,7 @@ func TestRefreshRewardsMarksManageableAndClearsReadonly3DOnly(t *testing.T) {
 		cfg: config.Config{
 			Twitch: config.TwitchConfig{ClientID: "client", AccessToken: "token"},
 			RewardMappings: []config.RewardMapping{
-				{RewardID: "readonly", RewardName: "Hydrate", Is3DOnly: true, Manageable: true},
+				{RewardID: "readonly", RewardName: "Hydrate", Enabled: true, Manageable: true},
 			},
 		},
 	}
@@ -212,8 +212,8 @@ func TestRefreshRewardsMarksManageableAndClearsReadonly3DOnly(t *testing.T) {
 	if !byID["manageable"].Manageable {
 		t.Fatalf("manageable reward not marked manageable: %#v", byID["manageable"])
 	}
-	if byID["readonly"].Manageable || byID["readonly"].Is3DOnly {
-		t.Fatalf("readonly reward should be unmanageable and not 3D-only: %#v", byID["readonly"])
+	if byID["readonly"].Manageable || byID["readonly"].Enabled {
+		t.Fatalf("readonly reward should be unmanageable and disabled: %#v", byID["readonly"])
 	}
 }
 
@@ -234,7 +234,7 @@ func TestCreateTwitchRewardPersistsManageableMapping(t *testing.T) {
 	if !result.OK {
 		t.Fatalf("result = %#v", result)
 	}
-	if len(app.cfg.RewardMappings) != 1 || app.cfg.RewardMappings[0].RewardID != "new" || !app.cfg.RewardMappings[0].Manageable {
+	if len(app.cfg.RewardMappings) != 1 || app.cfg.RewardMappings[0].RewardID != "new" || !app.cfg.RewardMappings[0].Manageable || !app.cfg.RewardMappings[0].Enabled {
 		t.Fatalf("mappings = %#v", app.cfg.RewardMappings)
 	}
 }
@@ -261,8 +261,8 @@ func TestApplyModeReportsTwitchFailureAndPersistsMode(t *testing.T) {
 				{Scene: "Main", Enabled: true, VTuberSource: "VTuber"},
 			},
 			RewardMappings: []config.RewardMapping{
-				{RewardID: "ok", RewardName: "OK", Is3DOnly: true, Manageable: true},
-				{RewardID: "fail", RewardName: "Fail", Is3DOnly: true, Manageable: true},
+				{RewardID: "ok", RewardName: "OK", Enabled: true, Manageable: true},
+				{RewardID: "fail", RewardName: "Fail", Enabled: true, Manageable: true},
 			},
 		},
 	}
@@ -301,7 +301,7 @@ func TestApplyModeFromDetectionCanSkipTwitchChanges(t *testing.T) {
 				{Scene: "Main", Enabled: true, VTuberSource: "VTuber"},
 			},
 			RewardMappings: []config.RewardMapping{
-				{RewardID: "ok", RewardName: "OK", Is3DOnly: true, Manageable: true},
+				{RewardID: "ok", RewardName: "OK", Enabled: true, Manageable: true},
 			},
 		},
 	}
@@ -860,7 +860,7 @@ func TestSelectProfileAppliesProfileConfiguration(t *testing.T) {
 						{Scene: "Gaming", Enabled: true, VTuberSource: "VTuber", PNGTuberSource: "PNG"},
 					},
 					RewardMappings: []config.RewardMapping{
-						{RewardID: "dance", RewardName: "Dance", Is3DOnly: true, Manageable: true},
+						{RewardID: "dance", RewardName: "Dance", Enabled: true, Manageable: true},
 					},
 				},
 			},

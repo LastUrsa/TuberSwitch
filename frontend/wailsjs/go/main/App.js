@@ -66,6 +66,10 @@ export function SetReward3DOnly(arg1, arg2) {
   return window['go']['main']['App']['SetReward3DOnly'](arg1, arg2);
 }
 
+export function SetRewardEnabled(arg1, arg2) {
+  return window['go']['main']['App']['SetRewardEnabled'](arg1, arg2);
+}
+
 export function StartTwitchLogin() {
   return window['go']['main']['App']['StartTwitchLogin']();
 }
