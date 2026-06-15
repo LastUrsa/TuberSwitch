@@ -19,6 +19,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/profiles", s.handleProfiles)
 	mux.HandleFunc("/api/v1/profile/current", s.handleCurrentProfile)
 	mux.HandleFunc("/api/v1/profile", s.handleProfile)
+	mux.HandleFunc("/api/v1/redeems/manual", s.handleRedeemsManual)
 	mux.HandleFunc("/api/v1/redeems", s.handleRedeems)
 	return securityHeaders(requireLocalHost(mux))
 }
@@ -110,29 +111,8 @@ func (s *Service) handleRedeems(w http.ResponseWriter, r *http.Request) {
 		response, err := s.Redeems(r.Context())
 		writeResult(w, response, err)
 	case http.MethodPost:
-		if !requireJSON(w, r) {
-			return
-		}
-		defer r.Body.Close()
-		if r.ContentLength > maxRequestBodyBytes {
-			writeError(w, http.StatusRequestEntityTooLarge, ErrInvalidRequest)
-			return
-		}
-		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
-		decoder.DisallowUnknownFields()
-		var request UpdateRedeemsRequest
-		if err := decoder.Decode(&request); err != nil {
-			var maxBytesError *http.MaxBytesError
-			if errors.As(err, &maxBytesError) {
-				writeError(w, http.StatusRequestEntityTooLarge, ErrInvalidRequest)
-				return
-			}
-			writeError(w, http.StatusBadRequest, ErrInvalidRequest)
-			return
-		}
-		var extra struct{}
-		if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-			writeError(w, http.StatusBadRequest, ErrInvalidRequest)
+		request, ok := readUpdateRedeemsRequest(w, r)
+		if !ok {
 			return
 		}
 		response, err := s.SetRedeems(r.Context(), request.Redeems)
@@ -141,6 +121,47 @@ func (s *Service) handleRedeems(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", http.MethodGet+", "+http.MethodPost)
 		writeError(w, http.StatusMethodNotAllowed, ErrInvalidRequest)
 	}
+}
+
+func (s *Service) handleRedeemsManual(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	request, ok := readUpdateRedeemsRequest(w, r)
+	if !ok {
+		return
+	}
+	response, err := s.ApplyRedeemsManual(r.Context(), request.Redeems)
+	writeResult(w, response, err)
+}
+
+func readUpdateRedeemsRequest(w http.ResponseWriter, r *http.Request) (UpdateRedeemsRequest, bool) {
+	if !requireJSON(w, r) {
+		return UpdateRedeemsRequest{}, false
+	}
+	defer r.Body.Close()
+	if r.ContentLength > maxRequestBodyBytes {
+		writeError(w, http.StatusRequestEntityTooLarge, ErrInvalidRequest)
+		return UpdateRedeemsRequest{}, false
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
+	decoder.DisallowUnknownFields()
+	var request UpdateRedeemsRequest
+	if err := decoder.Decode(&request); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			writeError(w, http.StatusRequestEntityTooLarge, ErrInvalidRequest)
+			return UpdateRedeemsRequest{}, false
+		}
+		writeError(w, http.StatusBadRequest, ErrInvalidRequest)
+		return UpdateRedeemsRequest{}, false
+	}
+	var extra struct{}
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, ErrInvalidRequest)
+		return UpdateRedeemsRequest{}, false
+	}
+	return request, true
 }
 
 func requireLocalHost(next http.Handler) http.Handler {

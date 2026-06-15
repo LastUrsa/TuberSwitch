@@ -166,6 +166,60 @@ func (a *App) SIPSetRedeems(_ context.Context, updates []sip.UpdateRedeemRequest
 	return nil
 }
 
+func (a *App) SIPApplyRedeemsManual(ctx context.Context, updates []sip.UpdateRedeemRequest) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cfg.Normalize()
+
+	updateByID := map[string]bool{}
+	for _, update := range updates {
+		updateByID[strings.TrimSpace(update.ID)] = update.Enabled
+	}
+
+	mappingByID := map[string]config.RewardMapping{}
+	for _, mapping := range a.activeSIPRewardMappingsLocked() {
+		if strings.TrimSpace(mapping.RewardID) == "" {
+			continue
+		}
+		mappingByID[mapping.RewardID] = mapping
+	}
+
+	updatesToApply := make([]config.RewardMapping, 0, len(updateByID))
+	for id := range updateByID {
+		mapping, ok := mappingByID[id]
+		if !ok {
+			return sip.ErrRedeemNotFound
+		}
+		if !mapping.Manageable {
+			return sip.ErrInvalidRequest
+		}
+		updatesToApply = append(updatesToApply, mapping)
+	}
+
+	if strings.TrimSpace(a.cfg.Twitch.AccessToken) == "" {
+		return errors.New("TwitchNotAuthenticated")
+	}
+	if a.twitch == nil {
+		return errors.New("Twitch service unavailable")
+	}
+	updated, err := a.twitch.EnsureToken(ctx, a.cfg.Twitch)
+	if err != nil {
+		return err
+	}
+	a.cfg.Twitch = updated
+	if a.secretStore != nil {
+		if err := a.secretStore.SaveTwitchTokens(twitchTokensFromConfig(updated)); err != nil {
+			return fmt.Errorf("Twitch secure token save failed: %w", err)
+		}
+	}
+	for _, mapping := range updatesToApply {
+		if err := a.twitch.SetRewardEnabled(ctx, a.cfg.Twitch, mapping.RewardID, updateByID[mapping.RewardID]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func sipRedeemCounts(mappings []config.RewardMapping) (int, int) {
 	manageable := 0
 	unmanageable := 0

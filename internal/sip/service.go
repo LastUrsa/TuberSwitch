@@ -14,6 +14,7 @@ type ProfileController interface {
 type RedeemController interface {
 	SIPRedeems(context.Context) ([]Redeem, error)
 	SIPSetRedeems(context.Context, []UpdateRedeemRequest) error
+	SIPApplyRedeemsManual(context.Context, []UpdateRedeemRequest) error
 }
 
 type StatusDetailsProvider interface {
@@ -132,25 +133,44 @@ func (s *Service) Redeems(ctx context.Context) (RedeemsResponse, error) {
 }
 
 func (s *Service) SetRedeems(ctx context.Context, updates []UpdateRedeemRequest) (SuccessResponse, error) {
-	if len(updates) == 0 {
-		return SuccessResponse{}, ErrInvalidRequest
-	}
-	if s == nil || s.controller == nil {
-		return SuccessResponse{}, ErrInvalidRequest
-	}
-	controller, ok := s.controller.(RedeemController)
-	if !ok {
-		return SuccessResponse{}, ErrInvalidRequest
-	}
-	for _, update := range updates {
-		if strings.TrimSpace(update.ID) == "" {
-			return SuccessResponse{}, ErrInvalidRequest
-		}
+	controller, err := s.redeemControllerForUpdates(updates)
+	if err != nil {
+		return SuccessResponse{}, err
 	}
 	if err := controller.SIPSetRedeems(ctx, updates); err != nil {
 		return SuccessResponse{}, err
 	}
 	return SuccessResponse{Success: true}, nil
+}
+
+func (s *Service) ApplyRedeemsManual(ctx context.Context, updates []UpdateRedeemRequest) (SuccessResponse, error) {
+	controller, err := s.redeemControllerForUpdates(updates)
+	if err != nil {
+		return SuccessResponse{}, err
+	}
+	if err := controller.SIPApplyRedeemsManual(ctx, updates); err != nil {
+		return SuccessResponse{}, err
+	}
+	return SuccessResponse{Success: true}, nil
+}
+
+func (s *Service) redeemControllerForUpdates(updates []UpdateRedeemRequest) (RedeemController, error) {
+	if len(updates) == 0 {
+		return nil, ErrInvalidRequest
+	}
+	if s == nil || s.controller == nil {
+		return nil, ErrInvalidRequest
+	}
+	controller, ok := s.controller.(RedeemController)
+	if !ok {
+		return nil, ErrInvalidRequest
+	}
+	for _, update := range updates {
+		if strings.TrimSpace(update.ID) == "" {
+			return nil, ErrInvalidRequest
+		}
+	}
+	return controller, nil
 }
 
 func (s *Service) Profiles(ctx context.Context) (ProfilesResponse, error) {

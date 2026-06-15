@@ -47,7 +47,7 @@ Current safeguards:
 - Requests with non-localhost `Host` headers are rejected.
 - CORS is not enabled for the SIP listener.
 - JSON `POST` requests reject unknown fields.
-- Mutating SIP endpoints are limited to activating an existing TuberSwitch profile by name and enabling or disabling existing redeems.
+- Mutating SIP endpoints are limited to activating an existing TuberSwitch profile by name, saving active-profile redeem intent, and temporarily enabling or disabling existing manageable redeems through Twitch.
 - The SIP listener enforces a small request-body limit.
 - Responses include `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'`, `Referrer-Policy: no-referrer`, and `X-Frame-Options: DENY`.
 
@@ -220,6 +220,33 @@ Response:
 ```
 
 Redeem updates persist to the active profile. Unknown redeem IDs return `RedeemNotFound`. Enabling a read-only or unmanageable redeem returns `InvalidRequest`.
+
+### POST `/api/v1/redeems/manual`
+
+Temporarily enables or disables existing manageable redeems through Twitch without saving profile intent. This endpoint is intended for LivePanel manual control. Changes may be overwritten the next time TuberSwitch applies a profile or mode.
+
+Request:
+
+```json
+{
+  "redeems": [
+    {
+      "id": "headpat",
+      "enabled": true
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "success": true
+}
+```
+
+Manual redeem updates apply directly through Twitch and do not mutate saved reward mappings. Unknown redeem IDs return `RedeemNotFound`. Read-only or unmanageable redeems return `InvalidRequest`.
 
 ### GET `/api/v1/profiles`
 
