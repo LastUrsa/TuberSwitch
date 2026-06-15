@@ -41,7 +41,7 @@ func TestSIPActivateProfileUsesExistingProfileActivationPath(t *testing.T) {
 						{Scene: "Gaming", Enabled: true, VTuberSource: "VTuber", PNGTuberSource: "PNG"},
 					},
 					RewardMappings: []config.RewardMapping{
-						{RewardID: "dance", RewardName: "Dance", Is3DOnly: true, Manageable: true},
+						{RewardID: "dance", RewardName: "Dance", Enabled: true, Manageable: true},
 					},
 				},
 			},
@@ -118,7 +118,7 @@ func TestSIPStatusDetailsExposeRuntimeDrawerFields(t *testing.T) {
 						{Scene: "Gaming", Enabled: true, VTuberSource: "VTuber", PNGTuberSource: "PNG"},
 					},
 					RewardMappings: []config.RewardMapping{
-						{RewardID: "dance", RewardName: "Dance", Is3DOnly: true, Manageable: true},
+						{RewardID: "dance", RewardName: "Dance", Enabled: true, Manageable: true},
 						{RewardID: "hydrate", RewardName: "Hydrate", Manageable: false},
 					},
 				},
@@ -164,8 +164,8 @@ func TestSIPRedeemsReadAndPersistActiveProfileRewardState(t *testing.T) {
 					Name: "Gaming Stream",
 					Mode: config.Mode3D,
 					RewardMappings: []config.RewardMapping{
-						{RewardID: "headpat", RewardName: "Headpat", Is3DOnly: true, Manageable: true},
-						{RewardID: "hydrate", RewardName: "Hydrate", Is3DOnly: false, Manageable: true},
+						{RewardID: "headpat", RewardName: "Headpat", Enabled: true, Manageable: true},
+						{RewardID: "hydrate", RewardName: "Hydrate", Enabled: false, Manageable: true},
 					},
 				},
 			},
@@ -184,10 +184,10 @@ func TestSIPRedeemsReadAndPersistActiveProfileRewardState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SIPSetRedeems: %v", err)
 	}
-	if app.cfg.Profiles[1].RewardMappings[0].Is3DOnly {
+	if app.cfg.Profiles[1].RewardMappings[0].Enabled {
 		t.Fatalf("profile reward was not updated: %+v", app.cfg.Profiles[1].RewardMappings)
 	}
-	if app.cfg.RewardMappings[0].Is3DOnly {
+	if app.cfg.RewardMappings[0].Enabled {
 		t.Fatalf("active reward snapshot was not updated: %+v", app.cfg.RewardMappings)
 	}
 
@@ -195,7 +195,7 @@ func TestSIPRedeemsReadAndPersistActiveProfileRewardState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if loaded.Profiles[1].RewardMappings[0].Is3DOnly {
+	if loaded.Profiles[1].RewardMappings[0].Enabled {
 		t.Fatalf("persisted reward was not updated: %+v", loaded.Profiles[1].RewardMappings)
 	}
 }
@@ -213,8 +213,8 @@ func TestSIPRedeemsExposeUnavailableRewardsWhenTwitchDisconnected(t *testing.T) 
 					Name: "Default",
 					Mode: config.ModePNG,
 					RewardMappings: []config.RewardMapping{
-						{RewardID: "headpat", RewardName: "Headpat", Is3DOnly: true, Manageable: true},
-						{RewardID: "hydrate", RewardName: "Hydrate", Is3DOnly: true, Manageable: false},
+						{RewardID: "headpat", RewardName: "Headpat", Enabled: true, Manageable: true},
+						{RewardID: "hydrate", RewardName: "Hydrate", Enabled: true, Manageable: false},
 					},
 				},
 			},
@@ -251,7 +251,7 @@ func TestSIPSetRedeemsRejectsUnknownAndUnmanageableRewards(t *testing.T) {
 					Name: "Default",
 					Mode: config.ModePNG,
 					RewardMappings: []config.RewardMapping{
-						{RewardID: "readonly", RewardName: "Hydrate", Is3DOnly: false, Manageable: false},
+						{RewardID: "readonly", RewardName: "Hydrate", Enabled: false, Manageable: false},
 					},
 				},
 			},

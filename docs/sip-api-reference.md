@@ -169,7 +169,7 @@ Additional status fields are additive and may be omitted when details are unavai
 
 ### GET `/api/v1/redeems`
 
-Returns known redeems and their current enabled and operational availability state for the active profile.
+Returns known redeems and their current profile enablement intent plus operational availability state for the active profile.
 
 Response:
 
@@ -192,11 +192,11 @@ Response:
 }
 ```
 
-`enabled` is user intent and can be modified through SIP. `available` is read-only operational readiness determined by TuberSwitch. Redeems remain visible when unavailable so clients can show diagnostics instead of hiding configured redeems.
+`enabled` is profile intent and can be modified through SIP. It tells TuberSwitch whether this profile should manage/toggle the redeem during mode changes. `available` is read-only operational readiness determined by TuberSwitch from Twitch connection and ownership state. Redeems remain visible when unavailable so clients can show diagnostics instead of hiding configured redeems.
 
 ### POST `/api/v1/redeems`
 
-Enables or disables existing redeems. TuberSwitch remains responsible for redeem creation, deletion, validation, and Twitch ownership rules.
+Enables or disables existing redeems for the active profile. TuberSwitch remains responsible for redeem creation, deletion, validation, and Twitch ownership rules.
 
 Request:
 

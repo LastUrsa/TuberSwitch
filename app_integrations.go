@@ -250,16 +250,17 @@ func (a *App) RefreshTwitchRewards() appdto.ActionResult {
 	return a.resultLocked(true, a.lastAction, nil, nil)
 }
 
-func (a *App) SetReward3DOnly(rewardID string, is3DOnly bool) appdto.ActionResult {
+func (a *App) SetRewardEnabled(rewardID string, enabled bool) appdto.ActionResult {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	found := false
 	for i := range a.cfg.RewardMappings {
 		if a.cfg.RewardMappings[i].RewardID == rewardID {
-			if is3DOnly && !a.cfg.RewardMappings[i].Manageable {
+			if enabled && !a.cfg.RewardMappings[i].Manageable {
 				return a.resultLocked(false, "Reward cannot be managed", nil, []string{"Twitch only allows this app to toggle rewards created by this app."})
 			}
-			a.cfg.RewardMappings[i].Is3DOnly = is3DOnly
+			a.cfg.RewardMappings[i].Enabled = enabled
+			a.cfg.RewardMappings[i].Is3DOnly = false
 			found = true
 			break
 		}
@@ -272,6 +273,10 @@ func (a *App) SetReward3DOnly(rewardID string, is3DOnly bool) appdto.ActionResul
 	}
 	a.lastAction = "Reward mapping updated"
 	return a.resultLocked(true, a.lastAction, nil, nil)
+}
+
+func (a *App) SetReward3DOnly(rewardID string, is3DOnly bool) appdto.ActionResult {
+	return a.SetRewardEnabled(rewardID, is3DOnly)
 }
 
 func (a *App) CreateTwitchReward(title string, cost int, prompt string) appdto.ActionResult {
@@ -309,7 +314,7 @@ func (a *App) GetTwitchRewards() []appdto.TwitchReward {
 		rewards = append(rewards, appdto.TwitchReward{
 			ID:         mapping.RewardID,
 			Title:      mapping.RewardName,
-			Is3DOnly:   mapping.Is3DOnly,
+			Enabled:    mapping.Enabled,
 			Manageable: mapping.Manageable,
 		})
 	}
@@ -409,7 +414,7 @@ func (a *App) applyTwitchModeLocked(mode config.Mode) []string {
 		return []string{"Twitch secure token save failed: " + err.Error()}
 	}
 	for _, mapping := range a.cfg.RewardMappings {
-		if !mapping.Is3DOnly || !mapping.Manageable {
+		if !mapping.Enabled || !mapping.Manageable {
 			continue
 		}
 		if err := a.twitch.SetRewardEnabled(context.Background(), a.cfg.Twitch, mapping.RewardID, profile.Enable3DRewards); err != nil {
@@ -505,6 +510,7 @@ func (a *App) refreshRewards(ctx context.Context) ([]twitch.Reward, error) {
 		mapping.RewardName = reward.Title
 		mapping.Manageable = manageableIDs[reward.ID]
 		if !mapping.Manageable {
+			mapping.Enabled = false
 			mapping.Is3DOnly = false
 		}
 		next = append(next, mapping)
@@ -528,6 +534,7 @@ func (a *App) upsertRewardMappingLocked(reward twitch.Reward, manageable bool) {
 		RewardID:   reward.ID,
 		RewardName: reward.Title,
 		Manageable: manageable,
+		Enabled:    manageable,
 	})
 }
 
@@ -707,6 +714,9 @@ func validateAppDetectionConfig(cfg config.AppDetectionConfig) ([]string, []stri
 	}
 	if cfg.IntervalSeconds < 2 {
 		errors = append(errors, "Detection interval must be at least 2 seconds")
+	}
+	if cfg.ManualOverrideCooldownSeconds < 0 {
+		errors = append(errors, "Manual override cooldown cannot be negative")
 	}
 	return errors, warnings
 }

@@ -79,7 +79,8 @@ type TwitchConfig struct {
 type RewardMapping struct {
 	RewardID   string `json:"rewardId"`
 	RewardName string `json:"rewardName"`
-	Is3DOnly   bool   `json:"is3DOnly"`
+	Enabled    bool   `json:"enabled"`
+	Is3DOnly   bool   `json:"is3DOnly,omitempty"`
 	Manageable bool   `json:"manageable"`
 }
 
@@ -187,6 +188,7 @@ func (c *Config) Normalize() {
 			},
 		}
 	}
+	normalizeRewardMappings(c.RewardMappings)
 	c.normalizeProfiles()
 	if c.AppDetection == (AppDetectionConfig{}) {
 		c.AppDetection = DefaultAppDetection()
@@ -280,6 +282,7 @@ func (c *Config) normalizeProfiles() {
 		if len(profile.RewardMappings) == 0 && len(c.RewardMappings) > 0 {
 			profile.RewardMappings = cloneRewardMappings(c.RewardMappings)
 		}
+		normalizeRewardMappings(profile.RewardMappings)
 		normalizedNameKey := strings.ToLower(profile.Name)
 		if seenNames[normalizedNameKey] && profile.ID != DefaultProfileID {
 			profile.Name = uniqueProfileName(profile.Name, seenNames)
@@ -357,7 +360,18 @@ func cloneSceneMappings(mappings []SceneMapping) []SceneMapping {
 }
 
 func cloneRewardMappings(mappings []RewardMapping) []RewardMapping {
-	return append([]RewardMapping(nil), mappings...)
+	next := append([]RewardMapping(nil), mappings...)
+	normalizeRewardMappings(next)
+	return next
+}
+
+func normalizeRewardMappings(mappings []RewardMapping) {
+	for i := range mappings {
+		if mappings[i].Is3DOnly {
+			mappings[i].Enabled = true
+			mappings[i].Is3DOnly = false
+		}
+	}
 }
 
 func DefaultAppDetection() AppDetectionConfig {

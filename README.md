@@ -26,7 +26,7 @@ Built with Wails, Go, and React.
 3. Open `Settings > Profiles` and choose the profile mode.
 4. Click `Sync Scenes & Sources`.
 5. Choose each managed scene's `Desired Source`.
-6. Check `Enabled` for rewards available in that profile.
+6. Check `Enabled` for rewards this profile should manage during mode changes.
 7. Click `Save profile`.
 
 Optional:

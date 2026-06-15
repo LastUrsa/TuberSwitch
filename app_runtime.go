@@ -19,6 +19,11 @@ func (a *App) GetStatus() appdto.Status {
 func (a *App) SaveConfig(input appdto.SettingsInput) appdto.ActionResult {
 	a.mu.Lock()
 	next := a.updatedConfigLocked(input.Config)
+	settingsErrors := validateSettingsConfig(next)
+	if len(settingsErrors) > 0 {
+		defer a.mu.Unlock()
+		return a.resultLocked(false, "Settings are invalid", nil, settingsErrors)
+	}
 	validationErrors, validationWarnings := validateAppDetectionConfig(next.AppDetection)
 	if len(validationErrors) > 0 {
 		defer a.mu.Unlock()
@@ -58,6 +63,11 @@ func (a *App) SaveConfig(input appdto.SettingsInput) appdto.ActionResult {
 func (a *App) SaveProfile(input appdto.SettingsInput) appdto.ActionResult {
 	a.mu.Lock()
 	next := a.updatedConfigLocked(input.Config)
+	settingsErrors := validateSettingsConfig(next)
+	if len(settingsErrors) > 0 {
+		defer a.mu.Unlock()
+		return a.resultLocked(false, "Profile settings are invalid", nil, settingsErrors)
+	}
 	validationErrors, validationWarnings := validateAppDetectionConfig(next.AppDetection)
 	if len(validationErrors) > 0 {
 		defer a.mu.Unlock()
@@ -106,6 +116,11 @@ func (a *App) SaveProfileAs(name string, input appdto.SettingsInput) appdto.Acti
 	if profileNameExists(next.Profiles, name, "") {
 		defer a.mu.Unlock()
 		return a.resultLocked(false, "Profile name must be unique", nil, []string{"A profile with that name already exists."})
+	}
+	settingsErrors := validateSettingsConfig(next)
+	if len(settingsErrors) > 0 {
+		defer a.mu.Unlock()
+		return a.resultLocked(false, "Profile settings are invalid", nil, settingsErrors)
 	}
 	validationErrors, validationWarnings := validateAppDetectionConfig(next.AppDetection)
 	if len(validationErrors) > 0 {
@@ -424,6 +439,14 @@ func profileNameExists(profiles []config.Profile, name string, exceptID string) 
 		}
 	}
 	return false
+}
+
+func validateSettingsConfig(cfg config.Config) []string {
+	errors := []string{}
+	if cfg.OBS.Port < 1 {
+		errors = append(errors, "OBS WebSocket port must be a positive number")
+	}
+	return errors
 }
 
 func uniqueCopyName(base string, profiles []config.Profile) string {

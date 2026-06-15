@@ -21,8 +21,8 @@ const mockStatus = {
     ],
     twitch: {clientId: 'client', channelId: 'channel', channelName: 'Streamer'},
     rewardMappings: [
-      {rewardId: 'manageable', rewardName: 'Dance', is3DOnly: true, manageable: true},
-      {rewardId: 'readonly', rewardName: 'Hydrate', is3DOnly: false, manageable: false},
+      {rewardId: 'manageable', rewardName: 'Dance', enabled: true, manageable: true},
+      {rewardId: 'readonly', rewardName: 'Hydrate', enabled: false, manageable: false},
     ],
     profiles: [
       {
@@ -35,8 +35,8 @@ const mockStatus = {
           {scene: 'BRB', enabled: false, vtuberSource: '', vtuberItemId: 0, pngTuberSource: '', pngTuberItemId: 0},
         ],
         rewardMappings: [
-          {rewardId: 'manageable', rewardName: 'Dance', is3DOnly: true, manageable: true},
-          {rewardId: 'readonly', rewardName: 'Hydrate', is3DOnly: false, manageable: false},
+          {rewardId: 'manageable', rewardName: 'Dance', enabled: true, manageable: true},
+          {rewardId: 'readonly', rewardName: 'Hydrate', enabled: false, manageable: false},
         ],
         lastUsed: '',
       },
@@ -66,8 +66,8 @@ const mockStatus = {
 };
 
 const mockRewards = [
-  {id: 'manageable', title: 'Dance', enabled: true, is3DOnly: true, manageable: true},
-  {id: 'readonly', title: 'Hydrate', enabled: true, is3DOnly: false, manageable: false},
+  {id: 'manageable', title: 'Dance', enabled: true, manageable: true},
+  {id: 'readonly', title: 'Hydrate', enabled: false, manageable: false},
 ];
 
 const actionResult = (status = mockStatus) => ({
@@ -101,7 +101,7 @@ const api = vi.hoisted(() => ({
   SaveProfile: vi.fn(),
   SaveProfileAs: vi.fn(),
   SelectProfile: vi.fn(),
-  SetReward3DOnly: vi.fn(),
+  SetRewardEnabled: vi.fn(),
   StartTwitchLogin: vi.fn(),
   SyncOBS: vi.fn(),
 }));
@@ -145,7 +145,7 @@ beforeEach(() => {
   api.SaveProfile.mockImplementation(async (input) => actionResult({...mockStatus, config: input.config}));
   api.SaveProfileAs.mockImplementation(async (_name, input) => actionResult({...mockStatus, config: input.config}));
   api.SelectProfile.mockResolvedValue(actionResult());
-  api.SetReward3DOnly.mockResolvedValue(actionResult());
+  api.SetRewardEnabled.mockResolvedValue(actionResult());
   api.CreateTwitchReward.mockResolvedValue(actionResult());
   api.ApplyMode.mockResolvedValue(actionResult({...mockStatus, currentMode: '3D', currentModeLabel: '3D VTuber Mode'}));
   api.SyncOBS.mockResolvedValue(actionResult());
@@ -313,6 +313,19 @@ describe('App', () => {
     expect(screen.getByText('Select 3D Mode Process')).toBeInTheDocument();
   });
 
+  it('closes only the process picker when clicking its backdrop', async () => {
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(screen.getAllByRole('button', {name: 'Select Running App'})[0]);
+    const picker = await screen.findByRole('dialog', {name: 'Select 3D Mode Process'});
+    await userEvent.click(picker.parentElement as HTMLElement);
+
+    expect(screen.queryByRole('dialog', {name: 'Select 3D Mode Process'})).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', {name: 'Settings'})).toBeInTheDocument();
+  });
+
   it('can show helper and utility apps when that filter is disabled', async () => {
     render(<App/>);
     await screen.findByText('TuberSwitch');
@@ -369,6 +382,26 @@ describe('App', () => {
 
     const options = within(screen.getByRole('combobox', {name: 'Active profile'})).getAllByRole('option');
     expect(options.map((option) => option.textContent)).toEqual(['Default', 'Alpha Stream', 'Zed Stream']);
+  });
+
+  it('does not duplicate recent profiles in the profile selector', async () => {
+    const statusWithRecentProfile = structuredClone(mockStatus);
+    statusWithRecentProfile.config.profiles.push({
+      id: 'gaming',
+      name: 'Gaming Stream',
+      mode: '3D',
+      sources: {scene: '', vtuberSource: '', vtuberItemId: 0, pngTuberSource: '', pngTuberItemId: 0},
+      sceneMappings: [],
+      rewardMappings: [],
+      lastUsed: '2026-06-14T10:00:00Z',
+    });
+    api.GetStatus.mockResolvedValue(statusWithRecentProfile);
+
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    const options = within(screen.getByRole('combobox', {name: 'Active profile'})).getAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual(['Gaming Stream', 'Default']);
   });
 
   it('keeps an in-progress settings draft when the background status refresh runs', async () => {
@@ -527,7 +560,7 @@ describe('App', () => {
     const manageable = getToggleButton('Manageable Rewards').parentElement as HTMLElement;
     await userEvent.click(within(manageable).getByRole('checkbox'));
 
-    await waitFor(() => expect(api.SetReward3DOnly).toHaveBeenCalledWith('manageable', false));
+    await waitFor(() => expect(api.SetRewardEnabled).toHaveBeenCalledWith('manageable', false));
   });
 
   it('uses an in-app dialog when saving a profile as a new profile', async () => {
@@ -549,6 +582,23 @@ describe('App', () => {
     promptSpy.mockRestore();
   });
 
+  it('keeps the Save As dialog open when the backend rejects the profile name', async () => {
+    api.SaveProfileAs.mockResolvedValueOnce(actionError('A profile with that name already exists.'));
+
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('Profiles'));
+    await userEvent.click(screen.getByRole('button', {name: 'Save As'}));
+    const dialog = screen.getByRole('dialog', {name: 'Save Profile As'});
+    await userEvent.type(within(dialog).getByLabelText('Profile Name'), 'Default');
+    await userEvent.click(within(dialog).getByRole('button', {name: 'Save'}));
+
+    expect(await screen.findByText('A profile with that name already exists.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', {name: 'Save Profile As'})).toBeInTheDocument();
+  });
+
   it('shows backend validation errors returned from save operations', async () => {
     api.SaveConfig.mockResolvedValueOnce(actionError('OBS password is required'));
 
@@ -561,6 +611,40 @@ describe('App', () => {
 
     expect(await screen.findByText('OBS password is required')).toBeInTheDocument();
     expect(api.SyncOBS).not.toHaveBeenCalled();
+  });
+
+  it('clears busy state after a failed save-then action', async () => {
+    api.SaveConfig.mockResolvedValueOnce(actionError('OBS password is required'));
+
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('Connections'));
+    await userEvent.click(screen.getByRole('button', {name: 'Login with Twitch'}));
+
+    expect(await screen.findByText('OBS password is required')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Login with Twitch'})).toBeEnabled();
+    expect(api.StartTwitchLogin).not.toHaveBeenCalled();
+  });
+
+  it('shows backend warnings returned from save operations', async () => {
+    api.SaveConfig.mockImplementationOnce(async (input) => ({
+      ...actionResult({...mockStatus, config: input.config}),
+      message: 'Settings saved',
+      warnings: ['3D app process name usually ends with .exe on Windows'],
+    }));
+
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(screen.getByLabelText('Enable App Detection'));
+    await userEvent.type(screen.getByLabelText(/3D Mode Process/i), 'vseeface');
+    await userEvent.click(screen.getByRole('button', {name: 'Save general settings'}));
+
+    expect(await screen.findByText('Settings saved')).toBeInTheDocument();
+    expect(screen.getByText('3D app process name usually ends with .exe on Windows')).toBeInTheDocument();
   });
 
   it('persists startup mode changes when saving general settings', async () => {
@@ -708,6 +792,8 @@ describe('App', () => {
 
     await waitFor(() => expect(api.SaveProfile).toHaveBeenCalled());
     expect(api.SyncOBS).not.toHaveBeenCalled();
+    expect(api.GetOBSInventory).not.toHaveBeenCalled();
+    expect(screen.getByText('OBS password is required')).toBeInTheDocument();
   });
 
   it('hides the client secret field and config paths from the settings view', async () => {
