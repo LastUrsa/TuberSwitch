@@ -2,6 +2,18 @@
 
 Release notes are part of the TuberSwitch release process. Before pushing a release tag, add a matching `## vX.Y.Z` section here. The release workflow publishes that section as the GitHub Release body and fails if it is missing or empty.
 
+## v0.7.1
+
+### SIP v1
+
+- Adds `POST /api/v1/redeems/manual` for temporary Twitch redeem enable/disable without saving active profile intent.
+- Validates manual redeem requests before applying Twitch changes so unknown or unmanageable rewards fail without partial updates.
+- Updates SIP API docs, README endpoint listings, and Postman collections for LivePanel manual redeem control.
+
+### Maintenance
+
+- Updated release metadata to `0.7.1`.
+
 ## v0.7.0
 
 ### SIP v1
