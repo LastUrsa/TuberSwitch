@@ -1106,7 +1106,13 @@ type fakeOBSService struct {
 }
 
 func (f *fakeOBSService) Connected() bool { return f.connected }
-func (f *fakeOBSService) Close()          { f.connected = false }
+func (f *fakeOBSService) CheckConnection() error {
+	if !f.connected {
+		return fmt.Errorf("disconnected")
+	}
+	return nil
+}
+func (f *fakeOBSService) Close() { f.connected = false }
 func (f *fakeOBSService) Connect(config.OBSConfig) error {
 	f.connected = true
 	return nil

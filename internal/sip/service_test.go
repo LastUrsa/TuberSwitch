@@ -53,6 +53,7 @@ func TestSIPV1ContractForLivePanel(t *testing.T) {
 		"activeMode":              "png",
 		"obsSummary":              "Connected: Gaming / PNG",
 		"obsConnected":            true,
+		"obsConnectionState":      "connected",
 		"activeScene":             "Gaming",
 		"activeSource":            "PNG",
 		"redeemsEnabled":          true,
@@ -326,6 +327,7 @@ func newTestService() *Service {
 		},
 		details: StatusDetails{
 			OBSConnected:            true,
+			OBSConnectionState:      "connected",
 			OBSSummary:              "Connected: Gaming / PNG",
 			ActiveScene:             "Gaming",
 			ActiveSource:            "PNG",

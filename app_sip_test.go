@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"TuberSwitch/internal/config"
@@ -461,6 +463,46 @@ func TestSIPStatusDetailsReportUnavailableConfiguration(t *testing.T) {
 	}
 	if details.RedeemsEnabled || details.RedeemCount != 1 || details.ManageableRedeemCount != 0 || details.UnmanageableRedeemCount != 1 {
 		t.Fatalf("redeem details = %+v", details)
+	}
+}
+
+func TestSIPStatusReflectsOBSReconnectStateWithoutCredentials(t *testing.T) {
+	fakeOBS := &fakeOBSService{}
+	app := &App{
+		logger: log.Default(), obs: fakeOBS,
+		cfg: config.Config{
+			OBS:          config.OBSConfig{Host: "127.0.0.1", Port: 4455, Password: "super-secret"},
+			ModeProfiles: config.DefaultProfiles(), CurrentMode: config.ModePNG,
+			ActiveProfileID: config.DefaultProfileID,
+			Profiles:        []config.Profile{{ID: config.DefaultProfileID, Name: "Default", Mode: config.ModePNG}},
+		},
+	}
+	app.obsReconnect = newOBSReconnectManager(fakeOBS, func() config.OBSConfig { return app.cfg.OBS })
+	app.obsReconnect.setState(obsStateReconnecting)
+
+	details, err := app.SIPStatusDetails(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if details.OBSConnected || details.OBSConnectionState != obsStateReconnecting || details.OBSSummary != "OBS reconnecting" {
+		t.Fatalf("reconnecting details = %+v", details)
+	}
+
+	fakeOBS.connected = true
+	app.obsReconnect.setState(obsStateConnected)
+	details, err = app.SIPStatusDetails(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !details.OBSConnected || details.OBSConnectionState != obsStateConnected {
+		t.Fatalf("connected details = %+v", details)
+	}
+	payload, err := json.Marshal(details)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(payload), "super-secret") {
+		t.Fatalf("OBS password leaked in status: %s", payload)
 	}
 }
 

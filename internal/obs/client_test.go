@@ -1,6 +1,7 @@
 package obs
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"TuberSwitch/internal/config"
@@ -26,6 +28,16 @@ func TestBuildAuth(t *testing.T) {
 	want := base64.StdEncoding.EncodeToString(authHash[:])
 	if got != want {
 		t.Fatalf("auth = %q, want %q", got, want)
+	}
+}
+
+func TestConnectionLogsDoNotExposePassword(t *testing.T) {
+	var output bytes.Buffer
+	client := New(log.New(&output, "", 0))
+	password := "never-log-this-password"
+	_ = client.Connect(config.OBSConfig{Host: "127.0.0.1", Port: 1, Password: password})
+	if strings.Contains(output.String(), password) {
+		t.Fatalf("OBS password appeared in logs: %s", output.String())
 	}
 }
 

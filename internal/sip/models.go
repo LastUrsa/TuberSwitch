@@ -79,6 +79,7 @@ type StatusResponse struct {
 	ActiveMode              string `json:"activeMode,omitempty"`
 	OBSSummary              string `json:"obsSummary,omitempty"`
 	OBSConnected            bool   `json:"obsConnected"`
+	OBSConnectionState      string `json:"obsConnectionState,omitempty"`
 	ActiveScene             string `json:"activeScene,omitempty"`
 	ActiveSource            string `json:"activeSource,omitempty"`
 	RedeemsEnabled          bool   `json:"redeemsEnabled"`
@@ -93,6 +94,7 @@ type StatusResponse struct {
 
 type StatusDetails struct {
 	OBSConnected            bool
+	OBSConnectionState      string
 	OBSSummary              string
 	ActiveScene             string
 	ActiveSource            string
