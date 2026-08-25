@@ -50,6 +50,9 @@ func (a *App) SaveConfig(input appdto.SettingsInput) appdto.ActionResult {
 	a.lastAction = "Settings saved"
 	appDetection := a.cfg.AppDetection
 	a.mu.Unlock()
+	if a.obsReconnect != nil {
+		a.obsReconnect.Wake()
+	}
 
 	if a.detector != nil {
 		a.detector.Start(appDetection)

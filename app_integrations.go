@@ -142,9 +142,12 @@ func executableFilename(selectedPath string) string {
 
 func (a *App) TestOBSConnection() appdto.ActionResult {
 	a.mu.Lock()
+	cfg := a.cfg.OBS
+	a.mu.Unlock()
+	err := a.connectOBSNow(cfg, true)
+	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.obs.Close()
-	if err := a.connectOBSLocked(); err != nil {
+	if err != nil {
 		a.lastAction = "OBS connection failed"
 		return a.resultLocked(false, "OBS connection failed", nil, []string{err.Error()})
 	}
@@ -154,8 +157,12 @@ func (a *App) TestOBSConnection() appdto.ActionResult {
 
 func (a *App) SyncOBS() appdto.ActionResult {
 	a.mu.Lock()
+	cfg := a.cfg.OBS
+	a.mu.Unlock()
+	err := a.connectOBSNow(cfg, false)
+	a.mu.Lock()
 	defer a.mu.Unlock()
-	if err := a.connectOBSLocked(); err != nil {
+	if err != nil {
 		return a.resultLocked(false, "OBS sync failed", nil, []string{err.Error()})
 	}
 	scenes, err := a.obs.GetScenes()
@@ -171,8 +178,12 @@ func (a *App) SyncOBS() appdto.ActionResult {
 
 func (a *App) GetOBSInventory(sceneName string) (appdto.OBSInventory, error) {
 	a.mu.Lock()
+	cfg := a.cfg.OBS
+	a.mu.Unlock()
+	err := a.connectOBSNow(cfg, false)
+	a.mu.Lock()
 	defer a.mu.Unlock()
-	if err := a.connectOBSLocked(); err != nil {
+	if err != nil {
 		return appdto.OBSInventory{}, err
 	}
 	scenes, err := a.obs.GetScenes()
@@ -336,7 +347,24 @@ func (a *App) connectOBSLocked() error {
 	if a.obs.Connected() {
 		return nil
 	}
+	if a.obsReconnect != nil {
+		a.obsReconnect.Wake()
+		return fmt.Errorf("OBS is disconnected; reconnection is in progress")
+	}
 	return a.obs.Connect(a.cfg.OBS)
+}
+
+func (a *App) connectOBSNow(cfg config.OBSConfig, reset bool) error {
+	if a.obsReconnect != nil {
+		return a.obsReconnect.ConnectNow(cfg, reset)
+	}
+	if reset {
+		a.obs.Close()
+	}
+	if a.obs.Connected() {
+		return nil
+	}
+	return a.obs.Connect(cfg)
 }
 
 func (a *App) refreshTwitchTokenLocked() {

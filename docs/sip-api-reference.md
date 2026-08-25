@@ -132,6 +132,7 @@ Response:
   "activeMode": "png",
   "obsSummary": "Connected: Gaming / PNG",
   "obsConnected": true,
+  "obsConnectionState": "connected",
   "activeScene": "Gaming",
   "activeSource": "PNG",
   "redeemsEnabled": true,
@@ -156,6 +157,7 @@ Additional status fields are additive and may be omitted when details are unavai
 
 - `obsSummary`: Short OBS connection/configuration summary for compact UI display
 - `obsConnected`: Whether TuberSwitch is currently connected to OBS
+- `obsConnectionState`: Non-sensitive connection lifecycle state: `not_configured`, `disconnected`, `reconnecting`, or `connected`
 - `activeScene`: Primary enabled scene mapping for the active profile or current config
 - `activeSource`: Primary source for the current mode in `activeScene`
 - `redeemsEnabled`: Whether Twitch reward switching is configured with an access token and at least one manageable reward

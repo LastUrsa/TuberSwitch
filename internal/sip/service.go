@@ -102,6 +102,7 @@ func (s *Service) Status(ctx context.Context) (StatusResponse, error) {
 		if details, err := provider.SIPStatusDetails(ctx); err == nil {
 			response.OBSSummary = details.OBSSummary
 			response.OBSConnected = details.OBSConnected
+			response.OBSConnectionState = details.OBSConnectionState
 			response.ActiveScene = details.ActiveScene
 			response.ActiveSource = details.ActiveSource
 			response.RedeemsEnabled = details.RedeemsEnabled

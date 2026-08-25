@@ -23,6 +23,8 @@ type Client struct {
 	conn   *websocket.Conn
 }
 
+const obsIOTimeout = 8 * time.Second
+
 type Scene struct {
 	Name string
 }
@@ -62,6 +64,9 @@ func (c *Client) Connect(cfg config.OBSConfig) error {
 	if err != nil {
 		return fmt.Errorf("OBS connection failed: %w", err)
 	}
+	deadline := time.Now().Add(obsIOTimeout)
+	_ = conn.SetReadDeadline(deadline)
+	_ = conn.SetWriteDeadline(deadline)
 
 	var hello obsMessage
 	if err := conn.ReadJSON(&hello); err != nil {
@@ -117,7 +122,9 @@ func (c *Client) dial(cfg config.OBSConfig) (*websocket.Conn, error) {
 	for _, host := range hosts {
 		u := url.URL{Scheme: scheme, Host: host + ":" + strconv.Itoa(cfg.Port), Path: "/"}
 		c.logger.Printf("OBS connection attempt: %s", u.String())
-		conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+		dialer := *websocket.DefaultDialer
+		dialer.HandshakeTimeout = obsIOTimeout
+		conn, _, err := dialer.Dial(u.String(), nil)
 		if err == nil {
 			return conn, nil
 		}
@@ -172,6 +179,10 @@ func (c *Client) FindSceneItemID(sceneName string, sourceName string) (int, erro
 	return 0, fmt.Errorf("OBS source %q was not found in scene %q", sourceName, sceneName)
 }
 
+func (c *Client) CheckConnection() error {
+	return c.request("GetVersion", nil, nil)
+}
+
 func (c *Client) SetSourceVisibility(sceneName string, sourceName string, sceneItemID int, enabled bool) error {
 	if sceneName == "" {
 		return fmt.Errorf("OBS scene name is required")
@@ -199,6 +210,15 @@ func (c *Client) request(requestType string, requestData map[string]interface{},
 	defer c.mu.Unlock()
 	if c.conn == nil {
 		return fmt.Errorf("OBS is disconnected")
+	}
+	deadline := time.Now().Add(obsIOTimeout)
+	if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		c.closeLocked()
+		return err
+	}
+	if err := c.conn.SetReadDeadline(deadline); err != nil {
+		c.closeLocked()
+		return err
 	}
 	id := fmt.Sprintf("%s-%d", requestType, time.Now().UnixNano())
 	if requestData == nil {

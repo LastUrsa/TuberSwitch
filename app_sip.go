@@ -84,6 +84,7 @@ func (a *App) SIPStatusDetails(context.Context) (sip.StatusDetails, error) {
 
 	activeScene, activeSource := primarySIPSceneSource(sceneMappings, mode)
 	obsConnected := a.obs != nil && a.obs.Connected()
+	obsConnectionState := a.obsConnectionStateLocked(obsConnected, obsConfigForSummary)
 	manageableRedeemCount, unmanageableRedeemCount := sipRedeemCounts(rewardMappings)
 
 	label := string(a.cfg.CurrentMode)
@@ -93,7 +94,8 @@ func (a *App) SIPStatusDetails(context.Context) (sip.StatusDetails, error) {
 
 	return sip.StatusDetails{
 		OBSConnected:            obsConnected,
-		OBSSummary:              sipOBSSummary(obsConnected, obsConfigForSummary, activeScene, activeSource),
+		OBSConnectionState:      obsConnectionState,
+		OBSSummary:              sipOBSSummary(obsConnected, obsConnectionState, obsConfigForSummary, activeScene, activeSource),
 		ActiveScene:             activeScene,
 		ActiveSource:            activeSource,
 		RedeemsEnabled:          strings.TrimSpace(a.cfg.Twitch.AccessToken) != "" && manageableRedeemCount > 0,
@@ -296,10 +298,26 @@ func primarySIPSceneSource(mappings []config.SceneMapping, mode config.Mode) (st
 	return "", ""
 }
 
-func sipOBSSummary(connected bool, obsConfig config.OBSConfig, scene string, source string) string {
+func (a *App) obsConnectionStateLocked(connected bool, obsConfig config.OBSConfig) string {
+	if !obsConfigured(obsConfig) {
+		return obsStateNotConfigured
+	}
+	if connected {
+		return obsStateConnected
+	}
+	if a.obsReconnect != nil {
+		return a.obsReconnect.State()
+	}
+	return obsStateDisconnected
+}
+
+func sipOBSSummary(connected bool, connectionState string, obsConfig config.OBSConfig, scene string, source string) string {
 	if !connected {
 		if strings.TrimSpace(obsConfig.Host) == "" || obsConfig.Port == 0 {
 			return "OBS not configured"
+		}
+		if connectionState == obsStateReconnecting {
+			return "OBS reconnecting"
 		}
 		return "OBS not connected"
 	}

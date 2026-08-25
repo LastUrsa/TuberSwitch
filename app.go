@@ -40,6 +40,7 @@ type App struct {
 	runtimeMode     string
 	windowActivator func(context.Context)
 	sipServer       *sip.Server
+	obsReconnect    *obsReconnectManager
 
 	mu         sync.Mutex
 	cfg        config.Config
@@ -76,6 +77,7 @@ type obsService interface {
 	GetSources(string) ([]obs.Source, error)
 	FindSceneItemID(string, string) (int, error)
 	SetSourceVisibility(string, string, int, bool) error
+	CheckConnection() error
 }
 
 type twitchService interface {
@@ -129,6 +131,18 @@ func NewAppForMode(runtimeMode string) *App {
 		windowActivator: defaultWindowActivator,
 	}
 	app.detector = appdetect.New(logger, app.processes, app.applyModeFromDetection, app.currentMode)
+	app.obsReconnect = newOBSReconnectManager(app.obs, func() config.OBSConfig {
+		app.mu.Lock()
+		defer app.mu.Unlock()
+		return app.cfg.OBS
+	})
+	app.obsReconnect.onConnected = func() {
+		app.mu.Lock()
+		defer app.mu.Unlock()
+		if err := app.applyOBSMode(app.cfg.CurrentMode); err != nil && app.logger != nil {
+			app.logger.Printf("OBS mode restore after reconnect failed: %v", err)
+		}
+	}
 	app.sipServer = sip.NewServer(sip.NewService(sip.AppInfo{
 		AppID:    "tuberswitch",
 		Name:     "TuberSwitch",
@@ -144,7 +158,6 @@ func (a *App) startup(ctx context.Context) {
 	if a.logger != nil {
 		a.logger.Printf("%s", startupModeMessage(a.runtimeMode))
 	}
-	_ = a.connectOBSLocked()
 	a.refreshTwitchTokenLocked()
 	if a.cfg.RefreshRewardsOnStartup && a.cfg.Twitch.AccessToken != "" {
 		if _, err := a.refreshRewards(ctx); err != nil {
@@ -165,6 +178,9 @@ func (a *App) startup(ctx context.Context) {
 	if a.detector != nil {
 		a.detector.Start(a.cfg.AppDetection)
 	}
+	if a.obsReconnect != nil {
+		a.obsReconnect.Start(ctx)
+	}
 	if a.sipServer != nil {
 		if err := a.sipServer.Start(ctx); err != nil && a.logger != nil {
 			a.logger.Printf("SIP server unavailable: %v", err)
@@ -182,7 +198,9 @@ func (a *App) shutdown(ctx context.Context) {
 	if a.detector != nil {
 		a.detector.Stop()
 	}
-	if a.obs != nil {
+	if a.obsReconnect != nil {
+		a.obsReconnect.Stop()
+	} else if a.obs != nil {
 		a.obs.Close()
 	}
 	if a.closeLog != nil {
