@@ -50,6 +50,8 @@ type applyModeOptions struct {
 	applyTwitchChanges bool
 	source             string
 	recordManualSwitch bool
+	previousScenes     []config.SceneMapping
+	previousRewards    []config.RewardMapping
 }
 
 type appDetectionService interface {
