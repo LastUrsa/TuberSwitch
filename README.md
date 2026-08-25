@@ -89,7 +89,7 @@ See [docs/sip-api-reference.md](docs/sip-api-reference.md) for the full SIP cont
 
 Development requirements:
 
-- Go `1.25+`
+- Go `1.26.6+` (the pinned toolchain includes required standard-library security fixes)
 - Node.js with npm
 - Wails CLI `v2.12.0` or compatible `v2`
 

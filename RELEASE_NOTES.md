@@ -12,6 +12,11 @@ Release notes are part of the TuberSwitch release process. Before pushing a rele
 - Uses the same reconciliation behavior for UI, app-detection, and SIP profile activation and reports item-specific OBS or Twitch failures.
 - Keeps temporary SIP manual redeem changes separate from saved profile intent.
 
+### Security
+
+- Updates the pinned Go toolchain to 1.26.6 for standard-library security fixes.
+- Refreshes the frontend dependency lockfile to patched Vite, PostCSS, Nano ID, and Undici releases.
+
 ## v0.7.1
 
 ### SIP v1
