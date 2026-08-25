@@ -2,6 +2,21 @@
 
 Release notes are part of the TuberSwitch release process. Before pushing a release tag, add a matching `## vX.Y.Z` section here. The release workflow publishes that section as the GitHub Release body and fails if it is missing or empty.
 
+## Unreleased
+
+### Profile Reliability
+
+- Reconciles outgoing and incoming profile state so OBS sources used only by the previous profile are hidden.
+- Applies the selected profile's VTuber and PNGTuber visibility across its configured OBS scenes.
+- Disables manageable Twitch rewards that are absent or disabled in the selected profile while leaving unmanageable rewards untouched.
+- Uses the same reconciliation behavior for UI, app-detection, and SIP profile activation and reports item-specific OBS or Twitch failures.
+- Keeps temporary SIP manual redeem changes separate from saved profile intent.
+
+### Security
+
+- Updates the pinned Go toolchain to 1.26.6 for standard-library security fixes.
+- Refreshes the frontend dependency lockfile to patched Vite, PostCSS, Nano ID, and Undici releases.
+
 ## v0.7.1
 
 ### SIP v1

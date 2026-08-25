@@ -356,6 +356,10 @@ func (a *App) refreshTwitchTokenLocked() {
 }
 
 func (a *App) applyOBSMode(mode config.Mode) error {
+	return a.applyOBSModeWithPrevious(mode, nil)
+}
+
+func (a *App) applyOBSModeWithPrevious(mode config.Mode, previous []config.SceneMapping) error {
 	if err := a.connectOBSLocked(); err != nil {
 		return err
 	}
@@ -364,31 +368,50 @@ func (a *App) applyOBSMode(mode config.Mode) error {
 		return fmt.Errorf("mode profile %q was not found", mode)
 	}
 	a.resolveSceneItemIDsBestEffortLocked()
-	errMessages := []string{}
-	applied := 0
+	type sourceTarget struct {
+		scene, source string
+		itemID        int
+		enabled       bool
+	}
+	targets := map[string]sourceTarget{}
+	targetOrder := []string{}
+	add := func(scene, source string, itemID int, enabled bool) {
+		if scene == "" || source == "" {
+			return
+		}
+		key := scene + "\x00" + source
+		if _, exists := targets[key]; !exists {
+			targetOrder = append(targetOrder, key)
+		}
+		targets[key] = sourceTarget{scene: scene, source: source, itemID: itemID, enabled: enabled}
+	}
+	for _, mapping := range previous {
+		if !mapping.Enabled || mapping.Scene == "" {
+			continue
+		}
+		add(mapping.Scene, mapping.VTuberSource, mapping.VTuberItemID, false)
+		add(mapping.Scene, mapping.PNGTuberSource, mapping.PNGTuberItemID, false)
+	}
 	for _, mapping := range a.cfg.SceneMappings {
 		if !mapping.Enabled || mapping.Scene == "" {
 			continue
 		}
-		if mapping.VTuberSource != "" {
-			applied++
-			if err := a.obs.SetSourceVisibility(mapping.Scene, mapping.VTuberSource, mapping.VTuberItemID, profile.VTuberVisible); err != nil {
-				errMessages = append(errMessages, fmt.Sprintf("%s / %s: %v", mapping.Scene, mapping.VTuberSource, err))
-			}
-		}
-		if mapping.PNGTuberSource != "" {
-			applied++
-			if err := a.obs.SetSourceVisibility(mapping.Scene, mapping.PNGTuberSource, mapping.PNGTuberItemID, profile.PNGTuberVisible); err != nil {
-				errMessages = append(errMessages, fmt.Sprintf("%s / %s: %v", mapping.Scene, mapping.PNGTuberSource, err))
-			}
-		}
+		add(mapping.Scene, mapping.VTuberSource, mapping.VTuberItemID, profile.VTuberVisible)
+		add(mapping.Scene, mapping.PNGTuberSource, mapping.PNGTuberItemID, profile.PNGTuberVisible)
 		if mapping.VTuberSource == "" || mapping.PNGTuberSource == "" {
 			a.logger.Printf("OBS scene %q partially configured: missing sources are ignored", mapping.Scene)
 		}
 		a.logger.Printf("OBS scene %q switched to %s", mapping.Scene, mode)
 	}
-	if applied == 0 && len(errMessages) == 0 {
+	if len(targets) == 0 {
 		return fmt.Errorf("no OBS scene mappings are configured")
+	}
+	errMessages := []string{}
+	for _, key := range targetOrder {
+		target := targets[key]
+		if err := a.obs.SetSourceVisibility(target.scene, target.source, target.itemID, target.enabled); err != nil {
+			errMessages = append(errMessages, fmt.Sprintf("%s / %s: %v", target.scene, target.source, err))
+		}
 	}
 	if len(errMessages) > 0 {
 		return stderrors.New(strings.Join(errMessages, "; "))
@@ -397,6 +420,10 @@ func (a *App) applyOBSMode(mode config.Mode) error {
 }
 
 func (a *App) applyTwitchModeLocked(mode config.Mode) []string {
+	return a.applyTwitchModeWithPreviousLocked(mode, nil)
+}
+
+func (a *App) applyTwitchModeWithPreviousLocked(mode config.Mode, previous []config.RewardMapping) []string {
 	errors := []string{}
 	if a.cfg.Twitch.AccessToken == "" {
 		return errors
@@ -413,11 +440,41 @@ func (a *App) applyTwitchModeLocked(mode config.Mode) []string {
 	if err := a.secretStore.SaveTwitchTokens(twitchTokensFromConfig(updated)); err != nil {
 		return []string{"Twitch secure token save failed: " + err.Error()}
 	}
+	type rewardTarget struct {
+		mapping config.RewardMapping
+		enabled bool
+	}
+	targets := map[string]rewardTarget{}
+	rewardOrder := []string{}
+	for _, mapping := range previous {
+		if mapping.RewardID != "" && mapping.Manageable {
+			if _, exists := targets[mapping.RewardID]; !exists {
+				rewardOrder = append(rewardOrder, mapping.RewardID)
+			}
+			targets[mapping.RewardID] = rewardTarget{mapping: mapping, enabled: false}
+		}
+	}
 	for _, mapping := range a.cfg.RewardMappings {
-		if !mapping.Enabled || !mapping.Manageable {
+		if mapping.RewardID == "" {
 			continue
 		}
-		if err := a.twitch.SetRewardEnabled(context.Background(), a.cfg.Twitch, mapping.RewardID, profile.Enable3DRewards); err != nil {
+		if !mapping.Manageable {
+			// The newly selected profile's ownership information is authoritative.
+			delete(targets, mapping.RewardID)
+			continue
+		}
+		if _, exists := targets[mapping.RewardID]; !exists {
+			rewardOrder = append(rewardOrder, mapping.RewardID)
+		}
+		targets[mapping.RewardID] = rewardTarget{mapping: mapping, enabled: mapping.Enabled && profile.Enable3DRewards}
+	}
+	for _, rewardID := range rewardOrder {
+		if _, exists := targets[rewardID]; !exists {
+			continue
+		}
+		target := targets[rewardID]
+		mapping := target.mapping
+		if err := a.twitch.SetRewardEnabled(context.Background(), a.cfg.Twitch, mapping.RewardID, target.enabled); err != nil {
 			msg := fmt.Sprintf("%s: %v", mapping.RewardName, err)
 			if isUnmanageableRewardError(err) {
 				a.logger.Printf("reward skipped: %s", msg)
@@ -427,7 +484,7 @@ func (a *App) applyTwitchModeLocked(mode config.Mode) []string {
 			errors = append(errors, msg)
 			continue
 		}
-		a.logger.Printf("reward %q enabled=%v", mapping.RewardName, profile.Enable3DRewards)
+		a.logger.Printf("reward %q enabled=%v", mapping.RewardName, target.enabled)
 	}
 	return errors
 }

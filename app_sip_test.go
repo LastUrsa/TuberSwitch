@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"path/filepath"
 	"testing"
@@ -63,6 +64,42 @@ func TestSIPActivateProfileUsesExistingProfileActivationPath(t *testing.T) {
 	}
 	if len(fakeTwitch.rewardCalls) != 1 || fakeTwitch.rewardCalls[0].rewardID != "dance" || !fakeTwitch.rewardCalls[0].enabled {
 		t.Fatalf("reward calls = %#v", fakeTwitch.rewardCalls)
+	}
+}
+
+func TestSIPActivateProfileReconcilesOutgoingRewardsAndOBSSources(t *testing.T) {
+	fakeOBS := &fakeOBSService{sources: map[string][]obs.Source{
+		"Old": {{Name: "OldPNG", SceneItemID: 10}},
+		"New": {{Name: "NewVTuber", SceneItemID: 20}},
+	}}
+	fakeTwitch := &fakeTwitchService{}
+	app := &App{
+		store: config.NewStore(filepath.Join(t.TempDir(), "config.json")), secretStore: &fakeSecretStore{},
+		logger: log.Default(), obs: fakeOBS, twitch: fakeTwitch,
+		cfg: config.Config{
+			OBS: config.OBSConfig{Host: "127.0.0.1", Port: 4455}, Twitch: config.TwitchConfig{AccessToken: "token"},
+			ModeProfiles: config.DefaultProfiles(), CurrentMode: config.ModePNG, ActiveProfileID: "old",
+			SceneMappings:  []config.SceneMapping{{Scene: "Old", Enabled: true, PNGTuberSource: "OldPNG", PNGTuberItemID: 10}},
+			RewardMappings: []config.RewardMapping{{RewardID: "old", RewardName: "Old", Enabled: true, Manageable: true}},
+			Profiles: []config.Profile{
+				{ID: "old", Name: "Old", Mode: config.ModePNG},
+				{ID: "new", Name: "New", Mode: config.Mode3D,
+					SceneMappings:  []config.SceneMapping{{Scene: "New", Enabled: true, VTuberSource: "NewVTuber"}},
+					RewardMappings: []config.RewardMapping{{RewardID: "new", RewardName: "New", Enabled: true, Manageable: true}}},
+			},
+		},
+	}
+	profile, err := app.SIPActivateProfile(context.Background(), "New")
+	if err != nil || profile.ID != "new" {
+		t.Fatalf("SIPActivateProfile = %+v, %v", profile, err)
+	}
+	wantOBS := []visibilityCall{{scene: "Old", source: "OldPNG", id: 10, enabled: false}, {scene: "New", source: "NewVTuber", id: 20, enabled: true}}
+	if fmt.Sprint(fakeOBS.visibilityCalls) != fmt.Sprint(wantOBS) {
+		t.Fatalf("OBS calls = %#v, want %#v", fakeOBS.visibilityCalls, wantOBS)
+	}
+	wantRewards := []rewardCall{{rewardID: "old", enabled: false}, {rewardID: "new", enabled: true}}
+	if fmt.Sprint(fakeTwitch.rewardCalls) != fmt.Sprint(wantRewards) {
+		t.Fatalf("Twitch calls = %#v, want %#v", fakeTwitch.rewardCalls, wantRewards)
 	}
 }
 

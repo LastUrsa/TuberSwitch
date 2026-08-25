@@ -309,7 +309,17 @@ Response:
 }
 ```
 
-Profile names are matched case-insensitively. Activation uses TuberSwitch's existing profile path, so the active mode, OBS scene/source choices, and reward enablement update as if the profile were selected through the UI.
+Profile names are matched case-insensitively. Activation uses TuberSwitch's existing profile path, so it behaves the same as selecting the profile through the UI or app detection.
+
+Activation reconciles the union of the outgoing and incoming profile state:
+
+- OBS sources used only by the outgoing profile are hidden.
+- Incoming VTuber and PNGTuber sources receive the visibility required by the selected mode.
+- Manageable Twitch rewards used only by the outgoing profile are disabled.
+- Incoming manageable rewards are enabled or disabled according to the selected profile's intent.
+- Unmanageable Twitch rewards are not modified.
+
+OBS and Twitch updates are attempted independently. If one or more items fail, activation returns an error containing the affected scene/source or reward names after attempting the remaining items. Callers should display the error and refresh profile, OBS, and redeem status. A returned activation error does not imply that every reconciliation operation failed.
 
 ## Errors
 

@@ -81,13 +81,15 @@ SIP v1 is exposed on localhost only across ports `47040-47049`:
 
 Profiles and existing redeem state are the SIP control surface. Status includes compact OBS, redeem, and app detection summaries for local dashboards, but SIP does not expose configuration APIs for OBS scenes, reward definitions, app detection rules, or profile CRUD.
 
+Profile activation reconciles both the outgoing and incoming profiles. OBS sources used only by the outgoing profile are hidden, incoming VTuber/PNGTuber visibility is applied, and every affected manageable Twitch reward is enabled or disabled according to the incoming profile. Unmanageable rewards are left unchanged. Activation errors identify failed OBS sources or Twitch rewards so callers can surface partial reconciliation failures.
+
 See [docs/sip-api-reference.md](docs/sip-api-reference.md) for the full SIP contract. A Postman collection is available at [docs/postman/TuberSwitch-SIP-v1.postman_collection.json](docs/postman/TuberSwitch-SIP-v1.postman_collection.json).
 
 ## Development
 
 Development requirements:
 
-- Go `1.25+`
+- Go `1.26.6+` (the pinned toolchain includes required standard-library security fixes)
 - Node.js with npm
 - Wails CLI `v2.12.0` or compatible `v2`
 

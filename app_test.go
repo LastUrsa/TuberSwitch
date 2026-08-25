@@ -123,7 +123,7 @@ func TestApplyOBSModeTogglesSelectedSourcesAcrossScenes(t *testing.T) {
 	}
 }
 
-func TestApplyTwitchModeOnlyUpdatesManageableEnabledRewards(t *testing.T) {
+func TestApplyTwitchModeUpdatesAllManageableRewardsToIntendedState(t *testing.T) {
 	fakeTwitch := &fakeTwitchService{}
 	app := &App{
 		twitch:      fakeTwitch,
@@ -144,12 +144,76 @@ func TestApplyTwitchModeOnlyUpdatesManageableEnabledRewards(t *testing.T) {
 	if len(errors) != 0 {
 		t.Fatalf("errors = %#v", errors)
 	}
-	if len(fakeTwitch.rewardCalls) != 1 {
+	if len(fakeTwitch.rewardCalls) != 2 {
 		t.Fatalf("reward calls = %#v", fakeTwitch.rewardCalls)
 	}
-	call := fakeTwitch.rewardCalls[0]
-	if call.rewardID != "manageable" || call.enabled {
-		t.Fatalf("call = %#v", call)
+	if fakeTwitch.rewardCalls[0].rewardID != "manageable" || fakeTwitch.rewardCalls[0].enabled ||
+		fakeTwitch.rewardCalls[1].rewardID != "disabled" || fakeTwitch.rewardCalls[1].enabled {
+		t.Fatalf("calls = %#v", fakeTwitch.rewardCalls)
+	}
+}
+
+func TestSelectProfileReconcilesPreviousAndNewIntegrationState(t *testing.T) {
+	fakeOBS := &fakeOBSService{sources: map[string][]obs.Source{
+		"Old": {{Name: "OldVTuber", SceneItemID: 1}, {Name: "OldPNG", SceneItemID: 2}},
+		"New": {{Name: "NewVTuber", SceneItemID: 3}, {Name: "NewPNG", SceneItemID: 4}},
+	}}
+	fakeTwitch := &fakeTwitchService{}
+	app := &App{
+		store: config.NewStore(filepath.Join(t.TempDir(), "config.json")), secretStore: &fakeSecretStore{},
+		logger: log.Default(), obs: fakeOBS, twitch: fakeTwitch,
+		cfg: config.Config{
+			OBS: config.OBSConfig{Host: "127.0.0.1", Port: 4455}, Twitch: config.TwitchConfig{AccessToken: "token"},
+			ModeProfiles: config.DefaultProfiles(), CurrentMode: config.Mode3D, ActiveProfileID: "old",
+			SceneMappings: []config.SceneMapping{{Scene: "Old", Enabled: true, VTuberSource: "OldVTuber", PNGTuberSource: "OldPNG", VTuberItemID: 1, PNGTuberItemID: 2}},
+			RewardMappings: []config.RewardMapping{
+				{RewardID: "shared", RewardName: "Shared", Enabled: true, Manageable: true},
+				{RewardID: "old-only", RewardName: "Old Only", Enabled: true, Manageable: true},
+				{RewardID: "readonly", RewardName: "Readonly", Enabled: true, Manageable: false},
+			},
+			Profiles: []config.Profile{
+				{ID: "old", Name: "Old", Mode: config.Mode3D},
+				{ID: "new", Name: "New", Mode: config.Mode3D,
+					SceneMappings: []config.SceneMapping{{Scene: "New", Enabled: true, VTuberSource: "NewVTuber", PNGTuberSource: "NewPNG"}},
+					RewardMappings: []config.RewardMapping{
+						{RewardID: "shared", RewardName: "Shared", Enabled: false, Manageable: true},
+						{RewardID: "new-only", RewardName: "New Only", Enabled: true, Manageable: true},
+						{RewardID: "readonly", RewardName: "Readonly", Enabled: false, Manageable: false},
+					}},
+			},
+		},
+	}
+	result := app.SelectProfile("new")
+	if !result.OK {
+		t.Fatalf("SelectProfile: %#v", result)
+	}
+	wantOBS := []visibilityCall{
+		{scene: "Old", source: "OldVTuber", id: 1, enabled: false},
+		{scene: "Old", source: "OldPNG", id: 2, enabled: false},
+		{scene: "New", source: "NewVTuber", id: 3, enabled: true},
+		{scene: "New", source: "NewPNG", id: 4, enabled: false},
+	}
+	if fmt.Sprint(fakeOBS.visibilityCalls) != fmt.Sprint(wantOBS) {
+		t.Fatalf("OBS calls = %#v, want %#v", fakeOBS.visibilityCalls, wantOBS)
+	}
+	wantRewards := []rewardCall{{rewardID: "shared", enabled: false}, {rewardID: "old-only", enabled: false}, {rewardID: "new-only", enabled: true}}
+	if fmt.Sprint(fakeTwitch.rewardCalls) != fmt.Sprint(wantRewards) {
+		t.Fatalf("Twitch calls = %#v, want %#v", fakeTwitch.rewardCalls, wantRewards)
+	}
+}
+
+func TestSelectProfileReportsPartialReconciliationFailures(t *testing.T) {
+	fakeOBS := &fakeOBSService{sources: map[string][]obs.Source{"New": {{Name: "VTuber", SceneItemID: 3}}}, visibilityErrors: map[string]error{"New/VTuber": fakeError("OBS unavailable")}}
+	fakeTwitch := &fakeTwitchService{rewardErrors: map[string]error{"bad": fakeError("Twitch unavailable")}}
+	app := &App{store: config.NewStore(filepath.Join(t.TempDir(), "config.json")), secretStore: &fakeSecretStore{}, logger: log.Default(), obs: fakeOBS, twitch: fakeTwitch,
+		cfg: config.Config{OBS: config.OBSConfig{Host: "127.0.0.1", Port: 4455}, Twitch: config.TwitchConfig{AccessToken: "token"}, ModeProfiles: config.DefaultProfiles(), ActiveProfileID: "old",
+			Profiles: []config.Profile{{ID: "old", Name: "Old", Mode: config.ModePNG}, {ID: "new", Name: "New", Mode: config.Mode3D, SceneMappings: []config.SceneMapping{{Scene: "New", Enabled: true, VTuberSource: "VTuber"}}, RewardMappings: []config.RewardMapping{{RewardID: "good", RewardName: "Good", Enabled: true, Manageable: true}, {RewardID: "bad", RewardName: "Bad", Enabled: true, Manageable: true}}}}}}
+	result := app.SelectProfile("new")
+	if result.OK || len(result.Errors) != 2 {
+		t.Fatalf("result = %#v", result)
+	}
+	if len(fakeTwitch.rewardCalls) != 2 {
+		t.Fatalf("partial Twitch reconciliation stopped early: %#v", fakeTwitch.rewardCalls)
 	}
 }
 

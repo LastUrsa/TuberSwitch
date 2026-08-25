@@ -202,6 +202,8 @@ func (a *App) DeleteProfile(profileID string) appdto.ActionResult {
 	}
 	deletedName := a.cfg.Profiles[index].Name
 	activeDeleted := a.cfg.ActiveProfileID == profileID
+	previousScenes := append([]config.SceneMapping(nil), a.cfg.SceneMappings...)
+	previousRewards := append([]config.RewardMapping(nil), a.cfg.RewardMappings...)
 	a.cfg.Profiles = append(a.cfg.Profiles[:index], a.cfg.Profiles[index+1:]...)
 	if activeDeleted {
 		a.cfg.ActiveProfileID = config.DefaultProfileID
@@ -215,6 +217,8 @@ func (a *App) DeleteProfile(profileID string) appdto.ActionResult {
 			applyTwitchChanges: true,
 			source:             "profile",
 			recordManualSwitch: true,
+			previousScenes:     previousScenes,
+			previousRewards:    previousRewards,
 		})
 		if result.OK {
 			a.lastAction = "Deleted profile: " + deletedName
@@ -246,6 +250,10 @@ func (a *App) SelectProfile(profileID string) appdto.ActionResult {
 }
 
 func (a *App) applyStreamProfileLocked(selected config.Profile, options applyModeOptions) appdto.ActionResult {
+	// ApplyStreamProfile replaces the active mappings, so retain the outgoing
+	// profile's integration surface for stale-state reconciliation.
+	options.previousScenes = append([]config.SceneMapping(nil), a.cfg.SceneMappings...)
+	options.previousRewards = append([]config.RewardMapping(nil), a.cfg.RewardMappings...)
 	selected.LastUsed = time.Now().UTC().Format(time.RFC3339)
 	for i := range a.cfg.Profiles {
 		if a.cfg.Profiles[i].ID == selected.ID {
@@ -372,11 +380,11 @@ func (a *App) updatedConfigLocked(settings appdto.Settings) config.Config {
 func (a *App) applyModeLocked(mode config.Mode, options applyModeOptions) appdto.ActionResult {
 	warnings := []string{}
 	errors := []string{}
-	if err := a.applyOBSMode(mode); err != nil {
+	if err := a.applyOBSModeWithPrevious(mode, options.previousScenes); err != nil {
 		errors = append(errors, err.Error())
 	}
 	if options.applyTwitchChanges {
-		if errList := a.applyTwitchModeLocked(mode); len(errList) > 0 {
+		if errList := a.applyTwitchModeWithPreviousLocked(mode, options.previousRewards); len(errList) > 0 {
 			if options.source == "auto" {
 				warnings = append(warnings, errList...)
 			} else {
