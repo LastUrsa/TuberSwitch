@@ -2,7 +2,7 @@
 
 Release notes are part of the TuberSwitch release process. Before pushing a release tag, add a matching `## vX.Y.Z` section here. The release workflow publishes that section as the GitHub Release body and fails if it is missing or empty.
 
-## Unreleased
+## v0.7.2
 
 ### Profile Reliability
 
@@ -16,6 +16,10 @@ Release notes are part of the TuberSwitch release process. Before pushing a rele
 
 - Updates the pinned Go toolchain to 1.26.6 for standard-library security fixes.
 - Refreshes the frontend dependency lockfile to patched Vite, PostCSS, Nano ID, and Undici releases.
+
+### Maintenance
+
+- Updated release metadata to `0.7.2`.
 
 ## v0.7.1
 

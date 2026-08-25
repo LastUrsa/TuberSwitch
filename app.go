@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	currentAppVersion    = "0.7.1"
+	currentAppVersion    = "0.7.2"
 	githubLatestRelease  = "https://api.github.com/repos/LastUrsa/TuberSwitch/releases/latest"
 	githubReleasesPage   = "https://github.com/LastUrsa/TuberSwitch/releases"
 	updateRequestTimeout = 8 * time.Second
