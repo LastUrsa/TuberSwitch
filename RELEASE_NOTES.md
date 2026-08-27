@@ -2,13 +2,17 @@
 
 Release notes are part of the TuberSwitch release process. Before pushing a release tag, add a matching `## vX.Y.Z` section here. The release workflow publishes that section as the GitHub Release body and fails if it is missing or empty.
 
-## Unreleased
+## v0.7.3
 
 ### OBS Reliability
 
 - Automatically reconnects when OBS starts after TuberSwitch or an established OBS connection drops.
 - Uses serialized connection attempts with bounded exponential backoff to avoid reconnect storms.
 - Adds the non-sensitive SIP `obsConnectionState` status field while preserving `obsConnected`.
+
+### Maintenance
+
+- Updated release metadata to `0.7.3`.
 
 ## v0.7.2
 
