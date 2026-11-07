@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -143,13 +144,20 @@ func NewAppForMode(runtimeMode string) *App {
 			app.logger.Printf("OBS mode restore after reconnect failed: %v", err)
 		}
 	}
-	app.sipServer = sip.NewServer(sip.NewService(sip.AppInfo{
+	sipService := sip.NewService(sip.AppInfo{
 		AppID:    "tuberswitch",
 		Name:     "TuberSwitch",
 		Version:  currentAppVersion,
 		Mode:     runtimeMode,
 		Protocol: sip.ProtocolVersion,
-	}, app))
+	}, app)
+	if cfgPath != "" {
+		_ = sipService.UseOperationHistory(filepath.Join(filepath.Dir(cfgPath), "sip-operations.json"))
+	}
+	sipService.UseOperationLogger(func(op sip.DiagnosticOperation) {
+		app.logger.Printf("sip_operation request_id=%s operation_id=%s session_id=%s outcome=%s code=%s", op.RequestID, op.ID, op.SessionID, op.Outcome, op.ErrorCode)
+	})
+	app.sipServer = sip.NewServer(sipService)
 	return app.initSecrets()
 }
 

@@ -184,3 +184,29 @@ func TestOBSReconnectInvalidConfigurationAndShutdown(t *testing.T) {
 		t.Fatal("OBS remained connected after shutdown")
 	}
 }
+
+func TestOBSObservationTimestampsTrackProducerTransitions(t *testing.T) {
+	fake := &reconnectFakeOBS{}
+	manager := testReconnectManager(fake, config.OBSConfig{Host: "127.0.0.1", Port: 4455})
+	manager.setState(obsStateConnected)
+	observed, connected, disconnected, _, _ := manager.Diagnostics()
+	if observed == "" || connected == "" || disconnected != "" {
+		t.Fatal("incorrect initial connection observation")
+	}
+	again, _, _, _, _ := manager.Diagnostics()
+	if again != observed {
+		t.Fatal("reading diagnostics must not refresh observation time")
+	}
+	manager.setState(obsStateReconnecting)
+	_, sameConnected, dropped, code, _ := manager.Diagnostics()
+	if sameConnected != connected || dropped == "" || code != "UNAVAILABLE" {
+		t.Fatal("missing disconnect transition")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	manager.wait(ctx, time.Second)
+	_, _, _, _, retry := manager.Diagnostics()
+	if retry == "" {
+		t.Fatal("missing retry schedule")
+	}
+}

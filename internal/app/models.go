@@ -13,12 +13,20 @@ type Status struct {
 	AppDetectionEnabled bool        `json:"appDetectionEnabled"`
 }
 
+type IntegrationOutcome struct {
+	Integration string `json:"integration"`
+	State       string `json:"state"`
+	Phase       string `json:"phase"`
+	ErrorCode   string `json:"errorCode,omitempty"`
+}
+
 type ActionResult struct {
-	OK        bool     `json:"ok"`
-	Message   string   `json:"message"`
-	Warnings  []string `json:"warnings"`
-	Errors    []string `json:"errors"`
-	NewStatus Status   `json:"newStatus"`
+	IntegrationResults []IntegrationOutcome `json:"integrationResults,omitempty"`
+	OK                 bool                 `json:"ok"`
+	Message            string               `json:"message"`
+	Warnings           []string             `json:"warnings"`
+	Errors             []string             `json:"errors"`
+	NewStatus          Status               `json:"newStatus"`
 }
 
 type OBSScene struct {

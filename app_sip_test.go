@@ -67,6 +67,11 @@ func TestSIPActivateProfileUsesExistingProfileActivationPath(t *testing.T) {
 	if len(fakeTwitch.rewardCalls) != 1 || fakeTwitch.rewardCalls[0].rewardID != "dance" || !fakeTwitch.rewardCalls[0].enabled {
 		t.Fatalf("reward calls = %#v", fakeTwitch.rewardCalls)
 	}
+	details, err := app.SIPActivateProfileDetails(context.Background(), "gaming stream")
+	if err != nil || !details.Success || details.RequestedProfileID != "gaming" || details.ActiveProfileID != "gaming" || len(details.Results) != 3 {
+		t.Fatalf("missing per-integration activation outcomes: %+v %v", details, err)
+	}
+
 }
 
 func TestSIPActivateProfileReconcilesOutgoingRewardsAndOBSSources(t *testing.T) {

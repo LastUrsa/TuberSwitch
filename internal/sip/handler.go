@@ -21,7 +21,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/profile", s.handleProfile)
 	mux.HandleFunc("/api/v1/redeems/manual", s.handleRedeemsManual)
 	mux.HandleFunc("/api/v1/redeems", s.handleRedeems)
-	return securityHeaders(requireLocalHost(mux))
+	return securityHeaders(s.observer.Wrap(requireLocalHost(mux)))
 }
 
 func (s *Service) handleApp(w http.ResponseWriter, r *http.Request) {

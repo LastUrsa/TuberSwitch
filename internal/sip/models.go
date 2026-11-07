@@ -69,6 +69,11 @@ type CapabilitiesResponse struct {
 }
 
 type StatusResponse struct {
+	OBSObservedAt           string `json:"obsObservedAt,omitempty"`
+	OBSLastConnectedAt      string `json:"obsLastConnectedAt,omitempty"`
+	OBSLastDisconnectedAt   string `json:"obsLastDisconnectedAt,omitempty"`
+	OBSLastDisconnectCode   string `json:"obsLastDisconnectCode,omitempty"`
+	OBSNextReconnectAt      string `json:"obsNextReconnectAt,omitempty"`
 	State                   string `json:"state"`
 	Message                 string `json:"message"`
 	Healthy                 bool   `json:"healthy"`
@@ -93,19 +98,20 @@ type StatusResponse struct {
 }
 
 type StatusDetails struct {
-	OBSConnected            bool
-	OBSConnectionState      string
-	OBSSummary              string
-	ActiveScene             string
-	ActiveSource            string
-	RedeemsEnabled          bool
-	RedeemCount             int
-	ManageableRedeemCount   int
-	UnmanageableRedeemCount int
-	AppDetectionEnabled     bool
-	AppDetectionStatus      string
-	CurrentModeLabel        string
-	ActiveProfileLastUsed   string
+	OBSObservedAt, OBSLastConnectedAt, OBSLastDisconnectedAt, OBSLastDisconnectCode, OBSNextReconnectAt string
+	OBSConnected                                                                                        bool
+	OBSConnectionState                                                                                  string
+	OBSSummary                                                                                          string
+	ActiveScene                                                                                         string
+	ActiveSource                                                                                        string
+	RedeemsEnabled                                                                                      bool
+	RedeemCount                                                                                         int
+	ManageableRedeemCount                                                                               int
+	UnmanageableRedeemCount                                                                             int
+	AppDetectionEnabled                                                                                 bool
+	AppDetectionStatus                                                                                  string
+	CurrentModeLabel                                                                                    string
+	ActiveProfileLastUsed                                                                               string
 }
 
 type ProfilesResponse struct {
@@ -141,6 +147,13 @@ type ActivateProfileRequest struct {
 }
 
 type ProfileActivationResponse struct {
+	Error              string             `json:"error,omitempty"`
+	ErrorCode          string             `json:"errorCode,omitempty"`
+	OperationOutcome   string             `json:"operationOutcome,omitempty"`
+	RequestedProfileID string             `json:"requestedProfileId,omitempty"`
+	ActiveProfileID    string             `json:"activeProfileId,omitempty"`
+	Results            []DiagnosticResult `json:"results,omitempty"`
+
 	Success   bool   `json:"success"`
 	Profile   string `json:"profile,omitempty"`
 	ProfileID string `json:"profileId,omitempty"`

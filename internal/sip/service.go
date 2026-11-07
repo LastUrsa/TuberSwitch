@@ -11,6 +11,10 @@ type ProfileController interface {
 	SIPActivateProfile(context.Context, string) (Profile, error)
 }
 
+type ProfileActivationDetailsController interface {
+	SIPActivateProfileDetails(context.Context, string) (ProfileActivationResponse, error)
+}
+
 type RedeemController interface {
 	SIPRedeems(context.Context) ([]Redeem, error)
 	SIPSetRedeems(context.Context, []UpdateRedeemRequest) error
@@ -22,6 +26,7 @@ type StatusDetailsProvider interface {
 }
 
 type Service struct {
+	observer   *Observability
 	info       AppInfo
 	controller ProfileController
 }
@@ -33,7 +38,9 @@ func NewService(info AppInfo, controller ProfileController) *Service {
 	if info.Mode == "" {
 		info.Mode = StandaloneMode
 	}
-	return &Service{info: info, controller: controller}
+	service := &Service{info: info, controller: controller, observer: NewObservability(info.Version, false)}
+	service.observer.dependencies = service.diagnosticDependencies
+	return service
 }
 
 func (s *Service) App(context.Context) (AppResponse, error) {
@@ -101,6 +108,11 @@ func (s *Service) Status(ctx context.Context) (StatusResponse, error) {
 	if provider, ok := s.controller.(StatusDetailsProvider); ok {
 		if details, err := provider.SIPStatusDetails(ctx); err == nil {
 			response.OBSSummary = details.OBSSummary
+			response.OBSObservedAt = details.OBSObservedAt
+			response.OBSLastConnectedAt = details.OBSLastConnectedAt
+			response.OBSLastDisconnectedAt = details.OBSLastDisconnectedAt
+			response.OBSLastDisconnectCode = details.OBSLastDisconnectCode
+			response.OBSNextReconnectAt = details.OBSNextReconnectAt
 			response.OBSConnected = details.OBSConnected
 			response.OBSConnectionState = details.OBSConnectionState
 			response.ActiveScene = details.ActiveScene
@@ -210,6 +222,9 @@ func (s *Service) ActivateProfile(ctx context.Context, name string) (ProfileActi
 	if s == nil || s.controller == nil {
 		return ProfileActivationResponse{}, ErrProfileNotFound
 	}
+	if controller, ok := s.controller.(ProfileActivationDetailsController); ok {
+		return controller.SIPActivateProfileDetails(ctx, name)
+	}
 	profile, err := s.controller.SIPActivateProfile(ctx, name)
 	if err != nil {
 		return ProfileActivationResponse{}, err
@@ -240,5 +255,7 @@ func normalizeProfileMode(mode string) string {
 }
 
 func sipCapabilities() []string {
-	return []string{ProfilesCapability, RedeemsCapability}
+	return []string{"operations", "diagnostics", ProfilesCapability, RedeemsCapability}
 }
+
+func (s *Service) UseOperationHistory(path string) error { return s.observer.OpenHistory(path) }
