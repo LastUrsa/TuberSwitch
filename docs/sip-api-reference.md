@@ -66,7 +66,7 @@ Response:
   "appId": "tuberswitch",
   "appName": "TuberSwitch",
   "name": "TuberSwitch",
-  "version": "0.7.3",
+  "version": "1.0.0",
   "mode": "standalone",
   "protocolVersion": 1,
   "capabilities": [

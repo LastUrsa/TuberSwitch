@@ -2,7 +2,11 @@
 
 Release notes are part of the TuberSwitch release process. Before pushing a release tag, add a matching `## vX.Y.Z` section here. The release workflow publishes that section as the GitHub Release body and fails if it is missing or empty.
 
-## Unreleased
+## v1.0.0
+
+First stable release for Windows. Existing profile/configuration data remains supported; update in place using the installer or portable app. App version 1.0 does not change SIP protocol version 1.
+
+### Automation, reliability, and diagnostics
 
 - Adds explicit 3D/PNG detection target profiles. Detection can switch away from Default even when the target uses the current mode, while leaving active targets alone on subsequent polls. Unconfigured targets retain legacy selection behavior.
 - Validates target existence and saved mode, prevents silent fallback for invalid/deleted targets, and exposes safe detection reasons/target IDs/producer timestamps in settings, logs, and SIP diagnostics. Manual cooldown and both-app conflict preferences remain supported.

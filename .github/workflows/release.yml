@@ -1,6 +1,12 @@
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish GitHub release (leave false for packaging validation)
+        type: boolean
+        default: false
   push:
     tags:
       - 'v*'
@@ -91,7 +97,7 @@ jobs:
       - name: Prepare release notes
         shell: powershell
         run: |
-          $tag = $env:GITHUB_REF_NAME
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v' + (Get-Content wails.json -Raw | ConvertFrom-Json).info.productVersion }
           $notesPath = "RELEASE_NOTES.md"
           $outputPath = "build/bin/release-notes.md"
           $lines = Get-Content -LiteralPath $notesPath
@@ -131,15 +137,29 @@ jobs:
 
           Set-Content -LiteralPath $outputPath -Value $bodyLines
 
+      - name: Upload validated release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: tuberswitch-release-candidate
+          path: |
+            build/bin/TuberSwitch.exe
+            build/bin/TuberSwitch-amd64-installer.exe
+            build/bin/TuberSwitch-windows-amd64-portable.zip
+            build/bin/SHA256SUMS.txt
+          if-no-files-found: error
+
       - name: Publish GitHub release
+        if: github.event_name == 'push' || inputs.publish_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: powershell
         run: |
-          gh release create $env:GITHUB_REF_NAME `
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v' + (Get-Content wails.json -Raw | ConvertFrom-Json).info.productVersion }
+          gh release create $tag `
             "build/bin/TuberSwitch.exe" `
             "build/bin/TuberSwitch-amd64-installer.exe" `
             "build/bin/TuberSwitch-windows-amd64-portable.zip" `
             "build/bin/SHA256SUMS.txt" `
-            --title "TuberSwitch $env:GITHUB_REF_NAME" `
+            --title "TuberSwitch $tag" `
+            --target $env:GITHUB_SHA `
             --notes-file "build/bin/release-notes.md"

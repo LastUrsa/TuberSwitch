@@ -15,7 +15,7 @@ Built with Wails, Go, and React.
 
 ## Requirements
 
-- Windows
+- Windows x64
 - Microsoft WebView2 Runtime
 - OBS Studio with OBS WebSocket v5 enabled
 
@@ -34,7 +34,7 @@ Optional:
 8. Open `Settings > General`.
 9. Enable `App Detection`.
 10. Configure at least one process name.
-11. Save the settings.
+11. Assign optional 3D/PNG target profiles after checking their saved modes, then save the settings.
 
 ## App Detection
 
@@ -78,6 +78,8 @@ SIP v1 is exposed on localhost only across ports `47040-47049`:
 - `GET /api/v1/health`
 - `GET /api/v1/capabilities`
 - `GET /api/v1/status`
+- `GET /api/v1/diagnostics`
+- `GET /api/v1/operations/{id}`
 - `GET /api/v1/profiles`
 - `GET /api/v1/profile/current`
 - `POST /api/v1/profile`
@@ -98,7 +100,7 @@ See [docs/sip-api-reference.md](docs/sip-api-reference.md) for the full SIP cont
 Development requirements:
 
 - Go `1.26.10+` (the pinned toolchain includes required standard-library security fixes)
-- Node.js with npm
+- Node.js 24 with npm
 - Wails CLI `v2.13.0` or compatible `v2`
 
 ```powershell
@@ -151,3 +153,5 @@ Adds capability-advertised SIP operations/diagnostics and request correlation. P
 See [SIP Observability v1](./SIP_OBSERVABILITY_V1.md) for the common headers, operation/error schema, retry rules, capabilities, and endpoint examples. Legacy `error` fields remain display-only; clients should log the fixed `message`/`errorCode` and operational IDs instead.
 
 Build and validate with Go 1.26.10 or newer. Frontend build/test dependencies and Wails have been updated for security advisories.
+
+See [1.0 release validation](RELEASE_VALIDATION.md) for the verified checks, packaging gates, and manual-validation boundaries.
