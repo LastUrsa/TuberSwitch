@@ -131,7 +131,7 @@ func NewAppForMode(runtimeMode string) *App {
 		runtimeMode:     runtimeMode,
 		windowActivator: defaultWindowActivator,
 	}
-	app.detector = appdetect.New(logger, app.processes, app.applyModeFromDetection, app.currentMode)
+	app.detector = appdetect.New(logger, app.processes, app.applyModeFromDetection, app.currentMode, app.resolveDetectionTarget)
 	app.obsReconnect = newOBSReconnectManager(app.obs, func() config.OBSConfig {
 		app.mu.Lock()
 		defer app.mu.Unlock()

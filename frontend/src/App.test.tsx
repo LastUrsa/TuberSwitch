@@ -823,3 +823,42 @@ describe('App', () => {
     expect(screen.getByRole('button', {name: 'Check for Updates'})).toBeInTheDocument();
   });
 });
+
+
+describe('Detection profile targets', () => {
+  it('saves explicit 3D and PNG profile targets with app detection settings', async () => {
+    const status = structuredClone(mockStatus);
+    status.config.profiles.push({...structuredClone(status.config.profiles[0]), id: 'avatar', name: 'Avatar', mode: '3D'});
+    api.GetStatus.mockResolvedValue(status);
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('General'));
+    await userEvent.selectOptions(screen.getByLabelText('3D Detection Profile'), 'avatar');
+    await userEvent.selectOptions(screen.getByLabelText('PNG Detection Profile'), 'default');
+    await userEvent.click(screen.getByRole('button', {name: 'Save general settings'}));
+    await waitFor(() => expect(api.SaveConfig).toHaveBeenCalledWith(expect.objectContaining({config: expect.objectContaining({appDetection: expect.objectContaining({threeDProfileId: 'avatar', pngProfileId: 'default'})})})));
+  });
+
+  it('explains mismatched modes before saving a detection target', async () => {
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('General'));
+    await userEvent.selectOptions(screen.getByLabelText('3D Detection Profile'), 'default');
+    expect(screen.getByRole('alert')).toHaveTextContent('Target profile must use 3D mode');
+  });
+
+  it('keeps a deleted target visible and explains the runtime block', async () => {
+    const status = {...structuredClone(mockStatus), appDetection: {reason: 'target_missing', targetProfileId: 'deleted'}};
+    Object.assign(status.config.appDetection, {threeDProfileId: 'deleted'});
+    api.GetStatus.mockResolvedValue(status);
+    render(<App/>);
+    await screen.findByText('TuberSwitch');
+    await userEvent.click(screen.getByRole('button', {name: 'Open settings'}));
+    await userEvent.click(getSettingsTab('General'));
+    expect(screen.getByLabelText('3D Detection Profile')).toHaveValue('deleted');
+    expect(screen.getByRole('alert')).toHaveTextContent('Target profile no longer exists');
+    expect(screen.getByText('The detection target profile is missing.')).toBeInTheDocument();
+  });
+});

@@ -53,7 +53,13 @@ You can configure a process name by:
 
 TuberSwitch stores only the executable filename, such as `AvatarApp.exe`. Matching is case-insensitive.
 
-When a configured app is detected, TuberSwitch applies the most recently used profile with the matching mode. For example, a PNG mode process applies a PNGTuber profile, while a 3D mode process applies a 3D profile. If no profile exists for the detected mode, TuberSwitch falls back to switching the mode directly.
+In Settings → General → App Detection, choose a **3D Detection Profile** and a **PNG Detection Profile** to assign a saved profile to each detected app. For example, assign VNyan to your 3D avatar profile and veadotube-mini to your PNG profile. The target profile must have the matching saved mode; profile names do not determine mode. Correct a profile's mode in Settings → Profiles and save the profile before assigning it as a target.
+
+With an explicit target, detection checks both the active profile ID and mode. It activates the target even when Default already uses the same mode, and does not repeatedly apply an already active target. Missing/deleted or mismatched targets block switching and show an explanation; they never silently fall back to Default. Deleting a target preserves its reference until you choose a replacement or clear the selector.
+
+Leave a selector at **Automatic (existing mode selection)** to retain the previous behavior for that mode: when the mode changes, apply the most recently used matching profile, or switch mode directly if none exists. An already active mode remains unchanged. Existing installations keep this behavior until explicit targets are selected.
+
+The detection status explains no matching app, a conflict, manual override cooldown, invalid targets, or integration failure. The existing both-app conflict preference and manual cooldown still apply. An integration failure remains visible while the selected target is active; polling does not repeatedly reapply its integrations. Check the integrations and manually reapply the profile to retry. Logs record decision transitions with hashed target references and safe reason/error codes. SIP exposes safe producer observations through `appDetection` in status and `dependencies.appDetection` in diagnostics; it excludes process inventories and raw errors.
 
 ## Service Mode
 

@@ -123,6 +123,7 @@ func (s *Service) Status(ctx context.Context) (StatusResponse, error) {
 			response.UnmanageableRedeemCount = details.UnmanageableRedeemCount
 			response.AppDetectionEnabled = details.AppDetectionEnabled
 			response.AppDetectionStatus = details.AppDetectionStatus
+			response.AppDetection = details.AppDetection
 			response.CurrentModeLabel = details.CurrentModeLabel
 			response.ActiveProfileLastUsed = details.ActiveProfileLastUsed
 		}

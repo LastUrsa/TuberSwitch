@@ -4,6 +4,9 @@ Release notes are part of the TuberSwitch release process. Before pushing a rele
 
 ## Unreleased
 
+- Adds explicit 3D/PNG detection target profiles. Detection can switch away from Default even when the target uses the current mode, while leaving active targets alone on subsequent polls. Unconfigured targets retain legacy selection behavior.
+- Validates target existence and saved mode, prevents silent fallback for invalid/deleted targets, and exposes safe detection reasons/target IDs/producer timestamps in settings, logs, and SIP diagnostics. Manual cooldown and both-app conflict preferences remain supported.
+
 - Adds the additive SIP observability contract, safe operation correlation and diagnostics.
 - Adds capability-advertised SIP operations/diagnostics and request correlation. Profile activation returns requested/actual profile IDs and safe results for OBS source changes, redeem changes, and profile storage, including partial application. Avatar source switching is owned by OBS; no independent avatar connection is invented. Status reports producer-observed OBS timestamps, last disconnect code and next scheduled retry, independently of streaming activity. Successful SIP profile changes expose operation confirmation IDs/times and session-scoped revisions. Recent safe operations are retained beside configuration in `sip-operations.json` (up to 256 operations/14 days). Existing fields, local-host protections and synchronous clients remain supported.
 - Adds regression tests and updates patched build/test dependencies.

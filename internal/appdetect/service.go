@@ -2,6 +2,9 @@ package appdetect
 
 import (
 	"context"
+	"crypto/sha256"
+	"errors"
+	"fmt"
 	"log"
 	"slices"
 	"strings"
@@ -15,11 +18,14 @@ type ApplyModeFunc func(mode config.Mode, applyTwitch bool) error
 type CurrentModeFunc func() config.Mode
 
 type Service struct {
-	logger      *log.Logger
-	provider    ProcessProvider
-	applyMode   ApplyModeFunc
-	currentMode CurrentModeFunc
-	now         func() time.Time
+	logger        *log.Logger
+	provider      ProcessProvider
+	applyMode     ApplyModeFunc
+	currentMode   CurrentModeFunc
+	now           func() time.Time
+	resolveTarget ResolveTargetFunc
+	lastFailure   string
+	lastDecision  string
 
 	mu                  sync.Mutex
 	snapshot            Snapshot
@@ -36,14 +42,19 @@ type logState struct {
 	matches      []string
 }
 
-func New(logger *log.Logger, provider ProcessProvider, applyMode ApplyModeFunc, currentMode CurrentModeFunc) *Service {
+func New(logger *log.Logger, provider ProcessProvider, applyMode ApplyModeFunc, currentMode CurrentModeFunc, resolvers ...ResolveTargetFunc) *Service {
+	var resolver ResolveTargetFunc
+	if len(resolvers) > 0 {
+		resolver = resolvers[0]
+	}
 	return &Service{
-		logger:      logger,
-		provider:    provider,
-		applyMode:   applyMode,
-		currentMode: currentMode,
-		now:         time.Now,
-		snapshot:    Snapshot{Status: StatusDisabled},
+		resolveTarget: resolver,
+		logger:        logger,
+		provider:      provider,
+		applyMode:     applyMode,
+		currentMode:   currentMode,
+		now:           time.Now,
+		snapshot:      Snapshot{Status: StatusDisabled, Diagnostics: Diagnostics{Reason: "disabled"}},
 	}
 }
 
@@ -59,11 +70,12 @@ func (s *Service) Start(cfg config.AppDetectionConfig) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !cfg.Enabled {
-		s.snapshot = Snapshot{Status: StatusDisabled}
+		s.snapshot = Snapshot{Status: StatusDisabled, Diagnostics: Diagnostics{Reason: "disabled"}}
 		s.lastLogState = logState{}
 		return
 	}
-	s.snapshot = Snapshot{Status: StatusEnabled, ApplyTwitch: cfg.ApplyTwitchChanges}
+	s.lastFailure, s.lastDecision = "", ""
+	s.snapshot = Snapshot{Status: StatusEnabled, ApplyTwitch: cfg.ApplyTwitchChanges, Diagnostics: Diagnostics{Reason: "waiting"}}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.done = make(chan struct{})
@@ -75,7 +87,7 @@ func (s *Service) Stop() {
 	cancel, done := s.cancel, s.done
 	s.cancel = nil
 	s.done = nil
-	s.snapshot = Snapshot{Status: StatusDisabled}
+	s.snapshot = Snapshot{Status: StatusDisabled, Diagnostics: Diagnostics{Reason: "disabled"}}
 	s.lastLogState = logState{}
 	s.mu.Unlock()
 	stopLoop(cancel, done)
@@ -85,6 +97,7 @@ func (s *Service) RecordManualOverride(cooldown time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.manualOverrideUntil = s.now().Add(cooldown)
+	s.lastFailure = ""
 }
 
 func (s *Service) Snapshot() Snapshot {
@@ -112,7 +125,7 @@ func (s *Service) loop(ctx context.Context, cfg config.AppDetectionConfig, done 
 func (s *Service) tick(cfg config.AppDetectionConfig) {
 	processes, err := s.provider.ListProcesses()
 	if err != nil {
-		s.logger.Printf("app detection process enumeration failed: %v", err)
+		s.decision(Diagnostics{Reason: "process_unavailable", ErrorCode: "UNAVAILABLE", ObservedAt: s.now().UTC().Format(time.RFC3339Nano)})
 		s.updateSnapshot(func(snapshot *Snapshot) {
 			snapshot.Status = StatusEnabled
 			snapshot.DetectedNames = nil
@@ -125,6 +138,7 @@ func (s *Service) tick(cfg config.AppDetectionConfig) {
 	names := ProcessNames(processes)
 
 	evaluation := Evaluate(cfg, names)
+	diagnostics := Diagnostics{DesiredMode: evaluation.DesiredMode, ObservedAt: s.now().UTC().Format(time.RFC3339Nano), ThreeDRunning: containsProcessName(names, cfg.ThreeDProcessName), PNGRunning: containsProcessName(names, cfg.PNGProcessName)}
 	matches := matchedProcessNames(names, cfg)
 	s.updateSnapshot(func(snapshot *Snapshot) {
 		snapshot.Status = evaluation.Status
@@ -144,20 +158,65 @@ func (s *Service) tick(cfg config.AppDetectionConfig) {
 		matches:      matches,
 	})
 	if !evaluation.ShouldSwitch {
+		diagnostics.Reason = "no_app"
+		if diagnostics.ThreeDRunning && diagnostics.PNGRunning {
+			diagnostics.Reason = "conflict"
+		}
+		s.mu.Lock()
+		s.lastFailure = ""
+		s.mu.Unlock()
+		s.decision(diagnostics)
 		return
 	}
-	if s.currentMode() == evaluation.DesiredMode {
+	target := Target{}
+	if s.resolveTarget != nil {
+		target, err = s.resolveTarget(evaluation.DesiredMode)
+	} else {
+		target.Active = s.currentMode() == evaluation.DesiredMode
+	}
+	diagnostics.TargetProfileID = target.ProfileID
+	if err != nil {
+		diagnostics.Reason = "target_missing"
+		if errors.Is(err, ErrTargetModeMismatch) {
+			diagnostics.Reason = "target_mode_mismatch"
+		}
+		diagnostics.ErrorCode = "INVALID_REQUEST"
+		s.decision(diagnostics)
 		return
 	}
 	if s.inManualCooldown() {
-		s.logger.Printf("app detection suppressed by manual cooldown until %s", s.manualOverrideDeadline().Format(time.RFC3339))
+		diagnostics.Reason = "manual_cooldown"
+		diagnostics.CooldownUntil = s.manualOverrideDeadline().UTC().Format(time.RFC3339Nano)
+		s.decision(diagnostics)
+		return
+	}
+	failureKey := string(evaluation.DesiredMode) + ":" + target.ProfileID
+	if target.Active {
+		diagnostics.Reason = "already_active"
+		s.mu.Lock()
+		failed := s.lastFailure == failureKey
+		s.mu.Unlock()
+		if failed {
+			diagnostics.Reason = "integration_failed"
+			diagnostics.ErrorCode = "UNAVAILABLE"
+		}
+		s.decision(diagnostics)
 		return
 	}
 	if err := s.applyMode(evaluation.DesiredMode, cfg.ApplyTwitchChanges); err != nil {
-		s.logger.Printf("app detection switch failed: mode=%s err=%v", evaluation.DesiredMode, err)
+		s.mu.Lock()
+		s.lastFailure = failureKey
+		s.mu.Unlock()
+		diagnostics.Reason = "integration_failed"
+		diagnostics.ErrorCode = "UNAVAILABLE"
+		s.decision(diagnostics)
 		return
 	}
-	s.logger.Printf("app detection switched mode=%s", evaluation.DesiredMode)
+	s.mu.Lock()
+	s.lastFailure = ""
+	s.mu.Unlock()
+	diagnostics.Reason = "applied"
+	s.decision(diagnostics)
 }
 
 func (s *Service) updateSnapshot(apply func(snapshot *Snapshot)) {
@@ -216,4 +275,22 @@ func (s *Service) logObservationIfChanged(state logState) {
 		matchText = strings.Join(state.matches, ",")
 	}
 	s.logger.Printf("app detection observed: matches=%s status=%s desired_mode=%s should_switch=%t", matchText, state.status, state.desiredMode, state.shouldSwitch)
+}
+
+// decision logs transitions, not every polling heartbeat. IDs are hashed in logs.
+func (s *Service) decision(d Diagnostics) {
+	key := string(d.DesiredMode) + ":" + d.TargetProfileID + ":" + d.Reason + ":" + d.ErrorCode
+	s.mu.Lock()
+	changed := s.lastDecision != key
+	s.lastDecision = key
+	s.snapshot.Diagnostics = d
+	s.mu.Unlock()
+	if changed {
+		ref := "none"
+		if d.TargetProfileID != "" {
+			sum := sha256.Sum256([]byte(d.TargetProfileID))
+			ref = fmt.Sprintf("%x", sum[:12])
+		}
+		s.logger.Printf("app detection decision: mode=%s target_ref=%s reason=%s code=%s", d.DesiredMode, ref, d.Reason, d.ErrorCode)
+	}
 }

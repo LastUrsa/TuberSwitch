@@ -750,7 +750,11 @@ func (a *App) applyModeFromDetection(mode config.Mode, applyTwitch bool) error {
 		source:             "auto",
 	}
 	var result appdto.ActionResult
-	if profile, ok := a.profileForModeLocked(mode); ok {
+	profile, ok, err := a.detectionTargetLocked(mode)
+	if err != nil {
+		return err
+	}
+	if ok {
 		result = a.applyStreamProfileLocked(profile, options)
 	} else {
 		result = a.applyModeLocked(mode, options)
@@ -760,6 +764,13 @@ func (a *App) applyModeFromDetection(mode config.Mode, applyTwitch bool) error {
 	}
 	if len(result.Errors) > 0 {
 		return stderrors.New(strings.Join(result.Errors, "; "))
+	}
+	// Auto mode treats Twitch failures as non-fatal warnings, but diagnostics must
+	// still distinguish partial application from a fully successful activation.
+	for _, step := range result.IntegrationResults {
+		if step.State == "failed" {
+			return stderrors.New("automatic profile activation had an integration failure")
+		}
 	}
 	return nil
 }
@@ -777,7 +788,26 @@ func (a *App) appDetectionStatusLocked() string {
 		}
 		return appdetect.StatusDisabled
 	}
-	return a.detector.Snapshot().Status
+	snapshot := a.detector.Snapshot()
+	suffix := ""
+	switch snapshot.Diagnostics.Reason {
+	case "manual_cooldown":
+		suffix = "manual override cooldown"
+	case "conflict":
+		suffix = "conflict prevents switching"
+	case "target_missing":
+		suffix = "target profile missing"
+	case "target_mode_mismatch":
+		suffix = "target profile has wrong mode"
+	case "integration_failed":
+		suffix = "integration failure"
+	case "process_unavailable":
+		suffix = "process detection unavailable"
+	}
+	if suffix != "" {
+		return snapshot.Status + " (" + suffix + ")"
+	}
+	return snapshot.Status
 }
 
 func validateAppDetectionConfig(cfg config.AppDetectionConfig) ([]string, []string) {

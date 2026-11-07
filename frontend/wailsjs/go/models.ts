@@ -87,6 +87,7 @@ export namespace app {
 		}
 	}
 	export class Status {
+	    appDetection: appdetect.Diagnostics;
 	    config: Settings;
 	    currentMode: string;
 	    currentModeLabel: string;
@@ -109,6 +110,7 @@ export namespace app {
 	        this.twitchConnected = source["twitchConnected"];
 	        this.lastAction = source["lastAction"];
 	        this.appDetectionStatus = source["appDetectionStatus"];
+	        this.appDetection = this.convertValues(source["appDetection"], appdetect.Diagnostics);
 	        this.appDetectionEnabled = source["appDetectionEnabled"];
 	    }
 
@@ -348,6 +350,8 @@ export namespace app {
 export namespace config {
 
 	export class AppDetectionConfig {
+	    threeDProfileId?: string;
+	    pngProfileId?: string;
 	    enabled: boolean;
 	    threeDProcessName: string;
 	    pngProcessName: string;
@@ -364,6 +368,8 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.enabled = source["enabled"];
 	        this.threeDProcessName = source["threeDProcessName"];
+	        this.threeDProfileId = source["threeDProfileId"];
+	        this.pngProfileId = source["pngProfileId"];
 	        this.pngProcessName = source["pngProcessName"];
 	        this.intervalSeconds = source["intervalSeconds"];
 	        this.conflictBehavior = source["conflictBehavior"];
@@ -498,4 +504,29 @@ export namespace config {
 
 
 
+}
+
+export namespace appdetect {
+ export class Diagnostics {
+  desiredMode?: string;
+  targetProfileId?: string;
+  reason: string;
+  errorCode?: string;
+  observedAt?: string;
+  cooldownUntil?: string;
+  threeDRunning: boolean;
+  pngRunning: boolean;
+  static createFrom(source: any = {}) { return new Diagnostics(source); }
+  constructor(source: any = {}) {
+   if ('string' === typeof source) source = JSON.parse(source);
+   this.desiredMode = source["desiredMode"];
+   this.targetProfileId = source["targetProfileId"];
+   this.reason = source["reason"];
+   this.errorCode = source["errorCode"];
+   this.observedAt = source["observedAt"];
+   this.cooldownUntil = source["cooldownUntil"];
+   this.threeDRunning = source["threeDRunning"];
+   this.pngRunning = source["pngRunning"];
+  }
+ }
 }

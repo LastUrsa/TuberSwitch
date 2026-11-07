@@ -49,6 +49,8 @@ type Config = {
   appDetection: {
     enabled: boolean;
     threeDProcessName: string;
+    threeDProfileId?: string;
+    pngProfileId?: string;
     pngProcessName: string;
     intervalSeconds: number;
     conflictBehavior: 'do-nothing' | 'prefer-3d' | 'prefer-png';
@@ -91,6 +93,7 @@ type Status = {
   twitchConnected: boolean;
   lastAction: string;
   appDetectionStatus: string;
+  appDetection?: {reason: string; targetProfileId?: string; desiredMode?: Mode; errorCode?: string; cooldownUntil?: string};
   appDetectionEnabled: boolean;
 };
 
@@ -723,6 +726,22 @@ function App() {
                           onSelectRunningApp={() => setProcessPickerField('pngProcessName')}
                           onBrowseExecutable={() => void browseExecutableFor('pngProcessName')}
                         />
+                        {(['3D', 'PNG'] as Mode[]).map((mode) => {
+                          const field = mode === '3D' ? 'threeDProfileId' : 'pngProfileId';
+                          const targetId = draft.appDetection[field] || '';
+                          const target = draft.profiles.find((profile) => profile.id === targetId);
+                          const issue = targetId && (!target ? 'Target profile no longer exists. Choose another profile.' : target.mode !== mode ? `Target profile must use ${mode} mode. Correct its mode in Profiles or choose another profile.` : '');
+                          return <label key={mode}>
+                            <FieldLabel text={`${mode} Detection Profile`}/>
+                            <select aria-label={`${mode} Detection Profile`} value={targetId} onChange={(event) => setDraft({...draft, appDetection: {...draft.appDetection, [field]: event.currentTarget.value}})}>
+                              <option value="">Automatic (existing mode selection)</option>
+                              {targetId && !target ? <option value={targetId}>Unavailable profile</option> : null}
+                              {draft.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name} ({profile.mode})</option>)}
+                            </select>
+                            {issue ? <span role="alert">{issue}</span> : null}
+                          </label>;
+                        })}
+                        <p className="field-help">Choose the saved profile for each detected app. Its saved mode must match. Blank targets keep the existing selection behavior.</p>
                         <NumberInput
                           label="Detection Interval (seconds)"
                         value={draft.appDetection.intervalSeconds}
@@ -759,6 +778,8 @@ function App() {
                         <div className="settings-note">
                           <span>Current detection status</span>
                           <strong>{status?.appDetectionStatus || 'Disabled'}</strong>
+                          <p>{detectionReasonLabel(status?.appDetection?.reason)}</p>
+                          {status?.appDetection?.targetProfileId ? <p>Target: {draft.profiles.find((profile) => profile.id === status.appDetection?.targetProfileId)?.name || 'Unavailable profile'}</p> : null}
                         </div>
                       </section>
                     </div>
@@ -1680,3 +1701,14 @@ function stableStringify(value: unknown) {
 }
 
 export default App;
+
+function detectionReasonLabel(reason?: string): string {
+  const labels: Record<string, string> = {
+    disabled: 'Detection is disabled.', waiting: 'Waiting for detection.', no_app: 'No configured app is running.',
+    conflict: 'Both apps are running; conflict behavior prevents switching.', manual_cooldown: 'Manual override cooldown is active.',
+    target_missing: 'The detection target profile is missing.', target_mode_mismatch: 'The detection target has the wrong mode.',
+    already_active: 'The detected profile and mode are already active.', applied: 'The detected profile was applied.',
+    integration_failed: 'An integration could not be applied. Check OBS and Twitch before retrying.', process_unavailable: 'Running apps could not be checked.',
+  };
+  return labels[reason || 'waiting'] || 'Waiting for detection.';
+}

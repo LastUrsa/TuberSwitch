@@ -105,6 +105,8 @@ type ModeProfile struct {
 }
 
 type AppDetectionConfig struct {
+	ThreeDProfileID               string                       `json:"threeDProfileId,omitempty"`
+	PNGProfileID                  string                       `json:"pngProfileId,omitempty"`
 	Enabled                       bool                         `json:"enabled"`
 	ThreeDProcessName             string                       `json:"threeDProcessName"`
 	PNGProcessName                string                       `json:"pngProcessName"`
@@ -388,6 +390,8 @@ func DefaultAppDetection() AppDetectionConfig {
 
 func (c *AppDetectionConfig) Normalize() {
 	defaults := DefaultAppDetection()
+	c.ThreeDProfileID = strings.TrimSpace(c.ThreeDProfileID)
+	c.PNGProfileID = strings.TrimSpace(c.PNGProfileID)
 	c.ThreeDProcessName = normalizeExecutableName(c.ThreeDProcessName)
 	c.PNGProcessName = normalizeExecutableName(c.PNGProcessName)
 	if c.IntervalSeconds == 0 {

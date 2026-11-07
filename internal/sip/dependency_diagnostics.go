@@ -11,5 +11,5 @@ func (s *Service) diagnosticDependencies(ctx context.Context) any {
 	if err != nil {
 		return map[string]any{"obs": map[string]any{"state": "unavailable", "errorCode": "UNAVAILABLE"}}
 	}
-	return map[string]any{"obs": map[string]any{"connected": details.OBSConnected, "state": details.OBSConnectionState, "observedAt": details.OBSObservedAt, "lastConnectedAt": details.OBSLastConnectedAt, "lastDisconnectedAt": details.OBSLastDisconnectedAt, "lastDisconnectCode": details.OBSLastDisconnectCode, "nextReconnectAt": details.OBSNextReconnectAt}}
+	return map[string]any{"appDetection": details.AppDetection, "obs": map[string]any{"connected": details.OBSConnected, "state": details.OBSConnectionState, "observedAt": details.OBSObservedAt, "lastConnectedAt": details.OBSLastConnectedAt, "lastDisconnectedAt": details.OBSLastDisconnectedAt, "lastDisconnectCode": details.OBSLastDisconnectCode, "nextReconnectAt": details.OBSNextReconnectAt}}
 }

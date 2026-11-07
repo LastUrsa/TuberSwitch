@@ -1,16 +1,20 @@
 package app
 
-import "TuberSwitch/internal/config"
+import (
+	"TuberSwitch/internal/appdetect"
+	"TuberSwitch/internal/config"
+)
 
 type Status struct {
-	Config              Settings    `json:"config"`
-	CurrentMode         config.Mode `json:"currentMode"`
-	CurrentModeLabel    string      `json:"currentModeLabel"`
-	OBSConnected        bool        `json:"obsConnected"`
-	TwitchConnected     bool        `json:"twitchConnected"`
-	LastAction          string      `json:"lastAction"`
-	AppDetectionStatus  string      `json:"appDetectionStatus"`
-	AppDetectionEnabled bool        `json:"appDetectionEnabled"`
+	AppDetection        appdetect.Diagnostics `json:"appDetection"`
+	Config              Settings              `json:"config"`
+	CurrentMode         config.Mode           `json:"currentMode"`
+	CurrentModeLabel    string                `json:"currentModeLabel"`
+	OBSConnected        bool                  `json:"obsConnected"`
+	TwitchConnected     bool                  `json:"twitchConnected"`
+	LastAction          string                `json:"lastAction"`
+	AppDetectionStatus  string                `json:"appDetectionStatus"`
+	AppDetectionEnabled bool                  `json:"appDetectionEnabled"`
 }
 
 type IntegrationOutcome struct {

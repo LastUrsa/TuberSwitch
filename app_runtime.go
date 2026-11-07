@@ -24,7 +24,7 @@ func (a *App) SaveConfig(input appdto.SettingsInput) appdto.ActionResult {
 		defer a.mu.Unlock()
 		return a.resultLocked(false, "Settings are invalid", nil, settingsErrors)
 	}
-	validationErrors, validationWarnings := validateAppDetectionConfig(next.AppDetection)
+	validationErrors, validationWarnings := validateDetectionTargets(next)
 	if len(validationErrors) > 0 {
 		defer a.mu.Unlock()
 		return a.resultLocked(false, "App Detection settings are invalid", validationWarnings, validationErrors)
@@ -66,12 +66,13 @@ func (a *App) SaveConfig(input appdto.SettingsInput) appdto.ActionResult {
 func (a *App) SaveProfile(input appdto.SettingsInput) appdto.ActionResult {
 	a.mu.Lock()
 	next := a.updatedConfigLocked(input.Config)
+	next.UpsertActiveProfileFromCurrent(time.Now().UTC().Format(time.RFC3339))
 	settingsErrors := validateSettingsConfig(next)
 	if len(settingsErrors) > 0 {
 		defer a.mu.Unlock()
 		return a.resultLocked(false, "Profile settings are invalid", nil, settingsErrors)
 	}
-	validationErrors, validationWarnings := validateAppDetectionConfig(next.AppDetection)
+	validationErrors, validationWarnings := validateDetectionTargets(next)
 	if len(validationErrors) > 0 {
 		defer a.mu.Unlock()
 		return a.resultLocked(false, "Profile settings are invalid", validationWarnings, validationErrors)
@@ -86,7 +87,6 @@ func (a *App) SaveProfile(input appdto.SettingsInput) appdto.ActionResult {
 	} else {
 		next.OBS.Password = oldPassword
 	}
-	next.UpsertActiveProfileFromCurrent(time.Now().UTC().Format(time.RFC3339))
 	if err := a.store.Save(next); err != nil {
 		if input.UpdateOBSPassword {
 			_ = a.secretStore.SaveOBSPassword(oldPassword)
@@ -125,7 +125,7 @@ func (a *App) SaveProfileAs(name string, input appdto.SettingsInput) appdto.Acti
 		defer a.mu.Unlock()
 		return a.resultLocked(false, "Profile settings are invalid", nil, settingsErrors)
 	}
-	validationErrors, validationWarnings := validateAppDetectionConfig(next.AppDetection)
+	validationErrors, validationWarnings := validateDetectionTargets(next)
 	if len(validationErrors) > 0 {
 		defer a.mu.Unlock()
 		return a.resultLocked(false, "Profile settings are invalid", validationWarnings, validationErrors)
@@ -322,6 +322,7 @@ func (a *App) statusLocked() appdto.Status {
 		LastAction:          a.lastAction,
 		AppDetectionStatus:  a.appDetectionStatusLocked(),
 		AppDetectionEnabled: a.cfg.AppDetection.Enabled,
+		AppDetection:        a.detectionDiagnosticsLocked(),
 	}
 }
 
