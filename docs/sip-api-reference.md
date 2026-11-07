@@ -342,3 +342,10 @@ Common statuses:
 - `405 Method Not Allowed`: endpoint does not support the requested HTTP method
 - `413 Payload Too Large`: request body exceeds the SIP body limit
 - `415 Unsupported Media Type`: missing or non-JSON `Content-Type` for profile activation or redeem updates
+
+
+## Additive Observability Extension
+
+Adds capability-advertised SIP operations/diagnostics and request correlation. Profile activation returns requested/actual profile IDs and safe results for OBS source changes, redeem changes, and profile storage, including partial application. Avatar source switching is owned by OBS; no independent avatar connection is invented. Status reports producer-observed OBS timestamps, last disconnect code and next scheduled retry, independently of streaming activity. Successful SIP profile changes expose operation confirmation IDs/times and session-scoped revisions. Recent safe operations are retained beside configuration in `sip-operations.json` (up to 256 operations/14 days). Existing fields, local-host protections and synchronous clients remain supported.
+
+The [shared protocol contract](../SIP_OBSERVABILITY_V1.md) defines `X-Request-ID`, safe error fields, `GET /api/v1/diagnostics`, and `GET /api/v1/operations/{id}`. Capability detection is required before using optional behavior.

@@ -2,6 +2,12 @@
 
 Release notes are part of the TuberSwitch release process. Before pushing a release tag, add a matching `## vX.Y.Z` section here. The release workflow publishes that section as the GitHub Release body and fails if it is missing or empty.
 
+## Unreleased
+
+- Adds the additive SIP observability contract, safe operation correlation and diagnostics.
+- Adds capability-advertised SIP operations/diagnostics and request correlation. Profile activation returns requested/actual profile IDs and safe results for OBS source changes, redeem changes, and profile storage, including partial application. Avatar source switching is owned by OBS; no independent avatar connection is invented. Status reports producer-observed OBS timestamps, last disconnect code and next scheduled retry, independently of streaming activity. Successful SIP profile changes expose operation confirmation IDs/times and session-scoped revisions. Recent safe operations are retained beside configuration in `sip-operations.json` (up to 256 operations/14 days). Existing fields, local-host protections and synchronous clients remain supported.
+- Adds regression tests and updates patched build/test dependencies.
+
 ## v0.7.3
 
 ### OBS Reliability

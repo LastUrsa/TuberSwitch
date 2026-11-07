@@ -91,9 +91,9 @@ See [docs/sip-api-reference.md](docs/sip-api-reference.md) for the full SIP cont
 
 Development requirements:
 
-- Go `1.26.6+` (the pinned toolchain includes required standard-library security fixes)
+- Go `1.26.10+` (the pinned toolchain includes required standard-library security fixes)
 - Node.js with npm
-- Wails CLI `v2.12.0` or compatible `v2`
+- Wails CLI `v2.13.0` or compatible `v2`
 
 ```powershell
 cd frontend
@@ -136,3 +136,12 @@ Secrets are not stored in `config.json`. Sensitive values are stored in the OS c
 - Twitch issues: confirm the Client ID and retry the device login flow.
 - Reward issues: confirm the app has `channel:manage:redemptions` and that manageable rewards were created by this Twitch app/client ID.
 - App Detection issues: launch the target app first, then retry `Select Running App`, relax picker filters, or use `Browse Executable`.
+
+
+## SIP Troubleshooting and Operation Metadata
+
+Adds capability-advertised SIP operations/diagnostics and request correlation. Profile activation returns requested/actual profile IDs and safe results for OBS source changes, redeem changes, and profile storage, including partial application. Avatar source switching is owned by OBS; no independent avatar connection is invented. Status reports producer-observed OBS timestamps, last disconnect code and next scheduled retry, independently of streaming activity. Successful SIP profile changes expose operation confirmation IDs/times and session-scoped revisions. Recent safe operations are retained beside configuration in `sip-operations.json` (up to 256 operations/14 days). Existing fields, local-host protections and synchronous clients remain supported.
+
+See [SIP Observability v1](./SIP_OBSERVABILITY_V1.md) for the common headers, operation/error schema, retry rules, capabilities, and endpoint examples. Legacy `error` fields remain display-only; clients should log the fixed `message`/`errorCode` and operational IDs instead.
+
+Build and validate with Go 1.26.10 or newer. Frontend build/test dependencies and Wails have been updated for security advisories.

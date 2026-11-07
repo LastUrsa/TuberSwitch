@@ -33,34 +33,42 @@ func (a *App) SIPCurrentProfile(context.Context) (sip.Profile, error) {
 }
 
 func (a *App) SIPActivateProfile(ctx context.Context, name string) (sip.Profile, error) {
+	response, err := a.SIPActivateProfileDetails(ctx, name)
+	if err != nil {
+		return sip.Profile{}, err
+	}
+	if !response.Success {
+		return sip.Profile{}, errors.New(response.Error)
+	}
+	return a.SIPCurrentProfile(ctx)
+}
+func (a *App) SIPActivateProfileDetails(ctx context.Context, name string) (sip.ProfileActivationResponse, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return sip.Profile{}, sip.ErrInvalidRequest
+		return sip.ProfileActivationResponse{}, sip.ErrInvalidRequest
 	}
 	a.cfg.Normalize()
 	for _, profile := range a.cfg.Profiles {
 		if strings.EqualFold(profile.Name, name) {
-			result := a.applyStreamProfileLocked(profile, applyModeOptions{
-				applyTwitchChanges: true,
-				source:             "profile",
-				recordManualSwitch: true,
-			})
+			result := a.applyStreamProfileLocked(profile, applyModeOptions{applyTwitchChanges: true, source: "profile", recordManualSwitch: true})
+			response := sip.ProfileActivationResponse{Success: result.OK, Profile: profile.Name, ProfileID: a.cfg.ActiveProfileID, RequestedProfileID: profile.ID, ActiveProfileID: a.cfg.ActiveProfileID}
+			for _, step := range result.IntegrationResults {
+				response.Results = append(response.Results, sip.DiagnosticResult{Integration: step.Integration, State: step.State, Phase: step.Phase, ErrorCode: step.ErrorCode})
+			}
 			if !result.OK {
-				if len(result.Errors) > 0 {
-					return sip.Profile{}, errors.New(strings.Join(result.Errors, "; "))
+				response.Error = strings.Join(result.Errors, "; ")
+				if response.Error == "" {
+					response.Error = result.Message
 				}
-				return sip.Profile{}, errors.New(result.Message)
+				response.ErrorCode = "PARTIAL_FAILURE"
+				response.OperationOutcome = "partial"
 			}
-			selected, ok := a.profileByIDLocked(profile.ID)
-			if !ok {
-				return sipProfileFromConfig(profile), nil
-			}
-			return sipProfileFromConfig(selected), nil
+			return response, nil
 		}
 	}
-	return sip.Profile{}, sip.ErrProfileNotFound
+	return sip.ProfileActivationResponse{}, sip.ErrProfileNotFound
 }
 
 func (a *App) SIPStatusDetails(context.Context) (sip.StatusDetails, error) {
@@ -85,6 +93,10 @@ func (a *App) SIPStatusDetails(context.Context) (sip.StatusDetails, error) {
 	activeScene, activeSource := primarySIPSceneSource(sceneMappings, mode)
 	obsConnected := a.obs != nil && a.obs.Connected()
 	obsConnectionState := a.obsConnectionStateLocked(obsConnected, obsConfigForSummary)
+	var observed, connectedAt, disconnectedAt, disconnectCode, nextRetry string
+	if a.obsReconnect != nil {
+		observed, connectedAt, disconnectedAt, disconnectCode, nextRetry = a.obsReconnect.Diagnostics()
+	}
 	manageableRedeemCount, unmanageableRedeemCount := sipRedeemCounts(rewardMappings)
 
 	label := string(a.cfg.CurrentMode)
@@ -93,7 +105,8 @@ func (a *App) SIPStatusDetails(context.Context) (sip.StatusDetails, error) {
 	}
 
 	return sip.StatusDetails{
-		OBSConnected:            obsConnected,
+		OBSConnected:  obsConnected,
+		OBSObservedAt: observed, OBSLastConnectedAt: connectedAt, OBSLastDisconnectedAt: disconnectedAt, OBSLastDisconnectCode: disconnectCode, OBSNextReconnectAt: nextRetry,
 		OBSConnectionState:      obsConnectionState,
 		OBSSummary:              sipOBSSummary(obsConnected, obsConnectionState, obsConfigForSummary, activeScene, activeSource),
 		ActiveScene:             activeScene,

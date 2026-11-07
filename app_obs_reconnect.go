@@ -25,12 +25,13 @@ type obsReconnectManager struct {
 	healthEvery time.Duration
 	onConnected func()
 
-	attemptMu sync.Mutex
-	mu        sync.RWMutex
-	state     string
-	wake      chan struct{}
-	cancel    context.CancelFunc
-	done      chan struct{}
+	attemptMu                                                                            sync.Mutex
+	mu                                                                                   sync.RWMutex
+	state                                                                                string
+	observedAt, lastConnectedAt, lastDisconnectedAt, lastDisconnectCode, nextReconnectAt string
+	wake                                                                                 chan struct{}
+	cancel                                                                               context.CancelFunc
+	done                                                                                 chan struct{}
 }
 
 func newOBSReconnectManager(obs obsService, configFn func() config.OBSConfig) *obsReconnectManager {
@@ -180,6 +181,11 @@ func (m *obsReconnectManager) run(ctx context.Context) {
 }
 
 func (m *obsReconnectManager) wait(ctx context.Context, delay time.Duration) bool {
+	m.mu.Lock()
+	if m.state == obsStateReconnecting {
+		m.nextReconnectAt = time.Now().Add(delay).UTC().Format(time.RFC3339Nano)
+	}
+	m.mu.Unlock()
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
@@ -194,10 +200,31 @@ func (m *obsReconnectManager) wait(ctx context.Context, delay time.Duration) boo
 
 func (m *obsReconnectManager) setState(state string) {
 	m.mu.Lock()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	m.observedAt = now
+	if m.state != state {
+		if state == obsStateConnected {
+			m.lastConnectedAt = now
+			m.nextReconnectAt = ""
+		}
+		if m.state == obsStateConnected && state != obsStateConnected {
+			m.lastDisconnectedAt = now
+			m.lastDisconnectCode = "UNAVAILABLE"
+		}
+	}
 	m.state = state
 	m.mu.Unlock()
 }
 
 func obsConfigured(cfg config.OBSConfig) bool {
 	return strings.TrimSpace(cfg.Host) != "" && cfg.Port > 0 && cfg.Port <= 65535
+}
+
+func (m *obsReconnectManager) Diagnostics() (string, string, string, string, string) {
+	if m == nil {
+		return "", "", "", "", ""
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.observedAt, m.lastConnectedAt, m.lastDisconnectedAt, m.lastDisconnectCode, m.nextReconnectAt
 }

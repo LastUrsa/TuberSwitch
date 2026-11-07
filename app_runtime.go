@@ -257,7 +257,7 @@ func (a *App) applyStreamProfileLocked(selected config.Profile, options applyMod
 	// profile's integration surface for stale-state reconciliation.
 	options.previousScenes = append([]config.SceneMapping(nil), a.cfg.SceneMappings...)
 	options.previousRewards = append([]config.RewardMapping(nil), a.cfg.RewardMappings...)
-	selected.LastUsed = time.Now().UTC().Format(time.RFC3339)
+	selected.LastUsed = time.Now().UTC().Format(time.RFC3339Nano)
 	for i := range a.cfg.Profiles {
 		if a.cfg.Profiles[i].ID == selected.ID {
 			a.cfg.Profiles[i] = selected
@@ -380,14 +380,26 @@ func (a *App) updatedConfigLocked(settings appdto.Settings) config.Config {
 	return next
 }
 
-func (a *App) applyModeLocked(mode config.Mode, options applyModeOptions) appdto.ActionResult {
+func (a *App) applyModeLocked(mode config.Mode, options applyModeOptions) (result appdto.ActionResult) {
+	diagnostics := []appdto.IntegrationOutcome{}
+	defer func() { result.IntegrationResults = diagnostics }()
+	obsResult := appdto.IntegrationOutcome{Integration: "obs", State: "success", Phase: "apply_sources"}
+
 	warnings := []string{}
 	errors := []string{}
 	if err := a.applyOBSModeWithPrevious(mode, options.previousScenes); err != nil {
 		errors = append(errors, err.Error())
+		obsResult.State = "failed"
+		obsResult.ErrorCode = "UNAVAILABLE"
 	}
+	diagnostics = append(diagnostics, obsResult)
+	redeemResult := appdto.IntegrationOutcome{Integration: "redeems", State: "skipped", Phase: "apply_rewards"}
+
 	if options.applyTwitchChanges {
+		redeemResult.State = "success"
 		if errList := a.applyTwitchModeWithPreviousLocked(mode, options.previousRewards); len(errList) > 0 {
+			redeemResult.State = "failed"
+			redeemResult.ErrorCode = "PARTIAL_FAILURE"
 			if options.source == "auto" {
 				warnings = append(warnings, errList...)
 			} else {
@@ -395,10 +407,15 @@ func (a *App) applyModeLocked(mode config.Mode, options applyModeOptions) appdto
 			}
 		}
 	}
+	diagnostics = append(diagnostics, redeemResult)
 	a.cfg.CurrentMode = mode
+	storageResult := appdto.IntegrationOutcome{Integration: "profile_storage", State: "success", Phase: "save_profile"}
 	if err := a.store.Save(a.cfg); err != nil {
 		errors = append(errors, err.Error())
+		storageResult.State = "failed"
+		storageResult.ErrorCode = "INTERNAL_ERROR"
 	}
+	diagnostics = append(diagnostics, storageResult)
 	if options.recordManualSwitch && a.detector != nil {
 		a.detector.RecordManualOverride(time.Duration(a.cfg.AppDetection.ManualOverrideCooldownSeconds) * time.Second)
 	}
