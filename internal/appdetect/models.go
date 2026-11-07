@@ -1,6 +1,7 @@
 package appdetect
 
 import (
+	"errors"
 	"sort"
 	"strings"
 
@@ -16,7 +17,29 @@ const (
 	StatusNoAppsDetected = "No apps detected"
 )
 
+var ErrTargetMissing = errors.New("detection target profile is missing")
+var ErrTargetModeMismatch = errors.New("detection target profile has the wrong mode")
+
+// Diagnostics contains only operational state; never the process inventory,
+// profile names, paths, credentials, or raw integration errors.
+type Diagnostics struct {
+	DesiredMode     config.Mode `json:"desiredMode,omitempty"`
+	TargetProfileID string      `json:"targetProfileId,omitempty"`
+	Reason          string      `json:"reason"`
+	ErrorCode       string      `json:"errorCode,omitempty"`
+	ObservedAt      string      `json:"observedAt,omitempty"`
+	CooldownUntil   string      `json:"cooldownUntil,omitempty"`
+	ThreeDRunning   bool        `json:"threeDRunning"`
+	PNGRunning      bool        `json:"pngRunning"`
+}
+type Target struct {
+	ProfileID string
+	Active    bool
+}
+type ResolveTargetFunc func(config.Mode) (Target, error)
+
 type Snapshot struct {
+	Diagnostics      Diagnostics
 	Status           string
 	ThreeDRunning    bool
 	PNGRunning       bool

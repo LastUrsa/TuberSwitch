@@ -117,6 +117,7 @@ func (a *App) SIPStatusDetails(context.Context) (sip.StatusDetails, error) {
 		UnmanageableRedeemCount: unmanageableRedeemCount,
 		AppDetectionEnabled:     a.cfg.AppDetection.Enabled,
 		AppDetectionStatus:      a.appDetectionStatusLocked(),
+		AppDetection:            a.detectionDiagnosticsLocked(),
 		CurrentModeLabel:        label,
 		ActiveProfileLastUsed:   activeProfile.LastUsed,
 	}, nil

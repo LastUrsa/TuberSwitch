@@ -349,3 +349,24 @@ Common statuses:
 Adds capability-advertised SIP operations/diagnostics and request correlation. Profile activation returns requested/actual profile IDs and safe results for OBS source changes, redeem changes, and profile storage, including partial application. Avatar source switching is owned by OBS; no independent avatar connection is invented. Status reports producer-observed OBS timestamps, last disconnect code and next scheduled retry, independently of streaming activity. Successful SIP profile changes expose operation confirmation IDs/times and session-scoped revisions. Recent safe operations are retained beside configuration in `sip-operations.json` (up to 256 operations/14 days). Existing fields, local-host protections and synchronous clients remain supported.
 
 The [shared protocol contract](../SIP_OBSERVABILITY_V1.md) defines `X-Request-ID`, safe error fields, `GET /api/v1/diagnostics`, and `GET /api/v1/operations/{id}`. Capability detection is required before using optional behavior.
+
+
+### Detection target observations
+
+`GET /api/v1/status` adds `appDetection`; `GET /api/v1/diagnostics` exposes the same safe object at `dependencies.appDetection`:
+
+```json
+{
+  "desiredMode": "3D",
+  "targetProfileId": "avatar-3d",
+  "reason": "manual_cooldown",
+  "observedAt": "2026-11-07T12:00:00Z",
+  "cooldownUntil": "2026-11-07T12:00:15Z",
+  "threeDRunning": true,
+  "pngRunning": false
+}
+```
+
+`observedAt` comes from the detection loop, not from a SIP poll. `reason` is one of `disabled`, `waiting`, `no_app`, `conflict`, `manual_cooldown`, `target_missing`, `target_mode_mismatch`, `already_active`, `applied`, `integration_failed`, or `process_unavailable`. Missing/mismatched targets use `errorCode: INVALID_REQUEST`; process/integration failures use `UNAVAILABLE`. Optional fields are omitted when not applicable. No profile names, full process inventory, executable paths, credentials, or raw failures are included in this object. Existing `appDetectionStatus` and `appDetectionEnabled` remain supported. Blocked/failed decisions append a fixed explanation to the human-readable `appDetectionStatus`, so existing LivePanel clients can display the reason without adopting new fields.
+
+Explicit target profile IDs are configured only in TuberSwitch settings (`appDetection.threeDProfileId` / `pngProfileId`). SIP continues to expose owner state to LivePanel; consumers do not select a target merely by polling. Blank targets preserve legacy mode-based selection. Explicit targets require both profile and mode to match before detection considers them active. A removed or mismatched target blocks switching rather than falling back. The last integration failure remains visible while that target is active until a successful activation, a manual override, a configuration restart, or a no-app/conflict transition clears it.

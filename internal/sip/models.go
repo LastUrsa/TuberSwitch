@@ -1,6 +1,9 @@
 package sip
 
-import "errors"
+import (
+	"TuberSwitch/internal/appdetect"
+	"errors"
+)
 
 const ProtocolVersion = 1
 
@@ -69,35 +72,37 @@ type CapabilitiesResponse struct {
 }
 
 type StatusResponse struct {
-	OBSObservedAt           string `json:"obsObservedAt,omitempty"`
-	OBSLastConnectedAt      string `json:"obsLastConnectedAt,omitempty"`
-	OBSLastDisconnectedAt   string `json:"obsLastDisconnectedAt,omitempty"`
-	OBSLastDisconnectCode   string `json:"obsLastDisconnectCode,omitempty"`
-	OBSNextReconnectAt      string `json:"obsNextReconnectAt,omitempty"`
-	State                   string `json:"state"`
-	Message                 string `json:"message"`
-	Healthy                 bool   `json:"healthy"`
-	ActiveProfile           string `json:"activeProfile,omitempty"`
-	ActiveProfileID         string `json:"activeProfileId,omitempty"`
-	ActiveProfileName       string `json:"activeProfileName,omitempty"`
-	Mode                    string `json:"mode,omitempty"`
-	ActiveMode              string `json:"activeMode,omitempty"`
-	OBSSummary              string `json:"obsSummary,omitempty"`
-	OBSConnected            bool   `json:"obsConnected"`
-	OBSConnectionState      string `json:"obsConnectionState,omitempty"`
-	ActiveScene             string `json:"activeScene,omitempty"`
-	ActiveSource            string `json:"activeSource,omitempty"`
-	RedeemsEnabled          bool   `json:"redeemsEnabled"`
-	RedeemCount             int    `json:"redeemCount"`
-	ManageableRedeemCount   int    `json:"manageableRedeemCount"`
-	UnmanageableRedeemCount int    `json:"unmanageableRedeemCount"`
-	AppDetectionStatus      string `json:"appDetectionStatus,omitempty"`
-	AppDetectionEnabled     bool   `json:"appDetectionEnabled"`
-	CurrentModeLabel        string `json:"currentModeLabel,omitempty"`
-	ActiveProfileLastUsed   string `json:"activeProfileLastUsed,omitempty"`
+	AppDetection            appdetect.Diagnostics `json:"appDetection"`
+	OBSObservedAt           string                `json:"obsObservedAt,omitempty"`
+	OBSLastConnectedAt      string                `json:"obsLastConnectedAt,omitempty"`
+	OBSLastDisconnectedAt   string                `json:"obsLastDisconnectedAt,omitempty"`
+	OBSLastDisconnectCode   string                `json:"obsLastDisconnectCode,omitempty"`
+	OBSNextReconnectAt      string                `json:"obsNextReconnectAt,omitempty"`
+	State                   string                `json:"state"`
+	Message                 string                `json:"message"`
+	Healthy                 bool                  `json:"healthy"`
+	ActiveProfile           string                `json:"activeProfile,omitempty"`
+	ActiveProfileID         string                `json:"activeProfileId,omitempty"`
+	ActiveProfileName       string                `json:"activeProfileName,omitempty"`
+	Mode                    string                `json:"mode,omitempty"`
+	ActiveMode              string                `json:"activeMode,omitempty"`
+	OBSSummary              string                `json:"obsSummary,omitempty"`
+	OBSConnected            bool                  `json:"obsConnected"`
+	OBSConnectionState      string                `json:"obsConnectionState,omitempty"`
+	ActiveScene             string                `json:"activeScene,omitempty"`
+	ActiveSource            string                `json:"activeSource,omitempty"`
+	RedeemsEnabled          bool                  `json:"redeemsEnabled"`
+	RedeemCount             int                   `json:"redeemCount"`
+	ManageableRedeemCount   int                   `json:"manageableRedeemCount"`
+	UnmanageableRedeemCount int                   `json:"unmanageableRedeemCount"`
+	AppDetectionStatus      string                `json:"appDetectionStatus,omitempty"`
+	AppDetectionEnabled     bool                  `json:"appDetectionEnabled"`
+	CurrentModeLabel        string                `json:"currentModeLabel,omitempty"`
+	ActiveProfileLastUsed   string                `json:"activeProfileLastUsed,omitempty"`
 }
 
 type StatusDetails struct {
+	AppDetection                                                                                        appdetect.Diagnostics
 	OBSObservedAt, OBSLastConnectedAt, OBSLastDisconnectedAt, OBSLastDisconnectCode, OBSNextReconnectAt string
 	OBSConnected                                                                                        bool
 	OBSConnectionState                                                                                  string
