@@ -68,6 +68,8 @@ func (f *reconnectFakeOBS) SetSourceVisibility(string, string, int, bool) error 
 
 func testReconnectManager(fake *reconnectFakeOBS, cfg config.OBSConfig) *obsReconnectManager {
 	m := newOBSReconnectManager(fake, func() config.OBSConfig { return cfg })
+	m.processRunning = func() (bool, error) { return true, nil }
+	m.processEvery = 5 * time.Millisecond
 	m.baseDelay, m.maxDelay, m.healthEvery = 5*time.Millisecond, 20*time.Millisecond, 5*time.Millisecond
 	return m
 }
@@ -208,5 +210,125 @@ func TestOBSObservationTimestampsTrackProducerTransitions(t *testing.T) {
 	_, _, _, _, retry := manager.Diagnostics()
 	if retry == "" {
 		t.Fatal("missing retry schedule")
+	}
+}
+
+func TestOBSProcessAwarenessWaitsThenConnects(t *testing.T) {
+	fake := &reconnectFakeOBS{available: true}
+	m := testReconnectManager(fake, config.OBSConfig{Host: "localhost", Port: 4455})
+	var mu sync.Mutex
+	running := false
+	checks := 0
+	m.setState(obsStateReconnecting)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	m.wait(ctx, time.Second)
+	m.processRunning = func() (bool, error) { mu.Lock(); defer mu.Unlock(); checks++; return running, nil }
+	m.Start(context.Background())
+	defer m.Stop()
+	waitForOBS(t, time.Second, func() bool { mu.Lock(); defer mu.Unlock(); return checks >= 3 })
+	fake.mu.Lock()
+	attempts := len(fake.attempts)
+	fake.mu.Unlock()
+	if attempts != 0 || m.State() != obsStateNotRunning {
+		t.Fatalf("attempts=%d state=%s", attempts, m.State())
+	}
+	_, _, _, _, retry := m.Diagnostics()
+	if retry != "" {
+		t.Fatal("waiting for process advertised a connection retry")
+	}
+	mu.Lock()
+	running = true
+	mu.Unlock()
+	waitForOBS(t, time.Second, fake.Connected)
+	// Closing OBS should return to waiting rather than repeatedly connecting.
+	mu.Lock()
+	running = false
+	mu.Unlock()
+	fake.mu.Lock()
+	fake.drop = true
+	fake.available = false
+	fake.mu.Unlock()
+	waitForOBS(t, time.Second, func() bool { return m.State() == obsStateNotRunning })
+	fake.mu.Lock()
+	closedAttempts := len(fake.attempts)
+	fake.mu.Unlock()
+	mu.Lock()
+	closedChecks := checks
+	mu.Unlock()
+	waitForOBS(t, time.Second, func() bool { mu.Lock(); defer mu.Unlock(); return checks >= closedChecks+3 })
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if len(fake.attempts) != closedAttempts {
+		t.Fatal("connection attempts continued after OBS closed")
+	}
+}
+
+func TestOBSProcessAwarenessFallbacksAndManualConnect(t *testing.T) {
+	for _, host := range []string{"localhost", "127.0.0.1", "::1", "[::1]", "192.168.1.10"} {
+		t.Run(host, func(t *testing.T) {
+			fake := &reconnectFakeOBS{available: true}
+			cfg := config.OBSConfig{Host: host, Port: 4455}
+			m := testReconnectManager(fake, cfg)
+			m.processRunning = func() (bool, error) { return false, nil }
+			err := m.ConnectNow(cfg, false)
+			if host == "192.168.1.10" {
+				if err != nil || !fake.Connected() {
+					t.Fatal("remote connection suppressed")
+				}
+				return
+			}
+			if err == nil || fake.Connected() || m.State() != obsStateNotRunning {
+				t.Fatal("absent local OBS attempted connection")
+			}
+			m.processRunning = func() (bool, error) { return false, fmt.Errorf("access denied") }
+			if err := m.ConnectNow(cfg, false); err != nil || !fake.Connected() {
+				t.Fatal("detection failure suppressed connection")
+			}
+		})
+	}
+}
+
+func TestOBSNotRunningSummary(t *testing.T) {
+	if got := sipOBSSummary(false, obsStateNotRunning, config.OBSConfig{Host: "localhost", Port: 4455}, "", ""); got != "OBS not running" {
+		t.Fatal(got)
+	}
+}
+
+func TestOBSProcessAwarenessBackgroundFallbacks(t *testing.T) {
+	for _, scenario := range []string{"remote", "detection_error", "unsupported"} {
+		t.Run(scenario, func(t *testing.T) {
+			fake := &reconnectFakeOBS{available: true}
+			cfg := config.OBSConfig{Host: "localhost", Port: 4455}
+			if scenario == "remote" {
+				cfg.Host = "192.168.1.10"
+			}
+			m := testReconnectManager(fake, cfg)
+			m.processRunning = func() (bool, error) {
+				if scenario == "remote" {
+					t.Error("remote connection inspected local processes")
+				}
+				return false, fmt.Errorf("detection unavailable")
+			}
+			if scenario == "unsupported" {
+				m.processRunning = nil
+			}
+			m.Start(context.Background())
+			defer m.Stop()
+			waitForOBS(t, time.Second, fake.Connected)
+		})
+	}
+}
+
+func TestOBSProcessNames(t *testing.T) {
+	for _, name := range []string{"obs64.exe", "OBS64.EXE", "obs32.exe", "obs.exe"} {
+		if !isOBSProcessName(name) {
+			t.Errorf("missed OBS executable %q", name)
+		}
+	}
+	for _, name := range []string{"obs-browser-page.exe", "obs64.exe.bak", "myobs64.exe", ""} {
+		if isOBSProcessName(name) {
+			t.Errorf("matched unrelated process %q", name)
+		}
 	}
 }

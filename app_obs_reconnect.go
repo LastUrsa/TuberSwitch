@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 )
 
 const (
+	obsStateNotRunning    = "not_running"
 	obsStateNotConfigured = "not_configured"
 	obsStateDisconnected  = "disconnected"
 	obsStateReconnecting  = "reconnecting"
@@ -18,12 +20,14 @@ const (
 )
 
 type obsReconnectManager struct {
-	obs         obsService
-	config      func() config.OBSConfig
-	baseDelay   time.Duration
-	maxDelay    time.Duration
-	healthEvery time.Duration
-	onConnected func()
+	obs            obsService
+	config         func() config.OBSConfig
+	baseDelay      time.Duration
+	maxDelay       time.Duration
+	healthEvery    time.Duration
+	onConnected    func()
+	processRunning func() (bool, error)
+	processEvery   time.Duration
 
 	attemptMu                                                                            sync.Mutex
 	mu                                                                                   sync.RWMutex
@@ -38,6 +42,7 @@ func newOBSReconnectManager(obs obsService, configFn func() config.OBSConfig) *o
 	return &obsReconnectManager{
 		obs: obs, config: configFn,
 		baseDelay: time.Second, maxDelay: 30 * time.Second, healthEvery: 3 * time.Second,
+		processRunning: localOBSRunning, processEvery: 3 * time.Second,
 		state: obsStateDisconnected, wake: make(chan struct{}, 1),
 	}
 }
@@ -120,6 +125,10 @@ func (m *obsReconnectManager) ConnectNow(cfg config.OBSConfig, reset bool) error
 		m.setState(obsStateConnected)
 		return nil
 	}
+	if m.localOBSAbsent(cfg) {
+		m.setState(obsStateNotRunning)
+		return fmt.Errorf("OBS is not running")
+	}
 	m.setState(obsStateReconnecting)
 	if err := m.obs.Connect(cfg); err != nil {
 		m.setState(obsStateDisconnected)
@@ -151,6 +160,14 @@ func (m *obsReconnectManager) run(ctx context.Context) {
 			}
 			if err := m.obs.CheckConnection(); err != nil {
 				m.setState(obsStateReconnecting)
+			}
+			continue
+		}
+		if m.localOBSAbsent(cfg) {
+			m.setState(obsStateNotRunning)
+			delay = m.baseDelay
+			if !m.wait(ctx, m.processEvery) {
+				return
 			}
 			continue
 		}
@@ -212,6 +229,9 @@ func (m *obsReconnectManager) setState(state string) {
 			m.lastDisconnectCode = "UNAVAILABLE"
 		}
 	}
+	if state != obsStateReconnecting {
+		m.nextReconnectAt = ""
+	}
 	m.state = state
 	m.mu.Unlock()
 }
@@ -227,4 +247,23 @@ func (m *obsReconnectManager) Diagnostics() (string, string, string, string, str
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.observedAt, m.lastConnectedAt, m.lastDisconnectedAt, m.lastDisconnectCode, m.nextReconnectAt
+}
+
+// Only a successful local process observation may suppress connection attempts.
+// Remote hosts and detection errors retain normal bounded-backoff retries.
+func (m *obsReconnectManager) localOBSAbsent(cfg config.OBSConfig) bool {
+	host := strings.Trim(strings.TrimSpace(cfg.Host), "[]")
+	ip := net.ParseIP(host)
+	if !strings.EqualFold(host, "localhost") && (ip == nil || !ip.IsLoopback()) {
+		return false
+	}
+	if m.processRunning == nil {
+		return false
+	}
+	running, err := m.processRunning()
+	return err == nil && !running
+}
+
+func isOBSProcessName(name string) bool {
+	return strings.EqualFold(name, "obs64.exe") || strings.EqualFold(name, "obs32.exe") || strings.EqualFold(name, "obs.exe")
 }

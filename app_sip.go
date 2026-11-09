@@ -330,6 +330,9 @@ func sipOBSSummary(connected bool, connectionState string, obsConfig config.OBSC
 		if strings.TrimSpace(obsConfig.Host) == "" || obsConfig.Port == 0 {
 			return "OBS not configured"
 		}
+		if connectionState == obsStateNotRunning {
+			return "OBS not running"
+		}
 		if connectionState == obsStateReconnecting {
 			return "OBS reconnecting"
 		}
