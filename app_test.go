@@ -455,6 +455,11 @@ func TestTrustedBrowserURLRejectsUnexpectedHosts(t *testing.T) {
 }
 
 func TestCheckForUpdatesReportsAvailableVersionAndUsesFixedReleasePage(t *testing.T) {
+	var major, minor, patch int
+	if _, err := fmt.Sscanf(currentAppVersion, "%d.%d.%d", &major, &minor, &patch); err != nil {
+		t.Fatal(err)
+	}
+	nextVersion := fmt.Sprintf("%d.%d.%d", major, minor, patch+1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("method = %s", r.Method)
@@ -465,7 +470,7 @@ func TestCheckForUpdatesReportsAvailableVersionAndUsesFixedReleasePage(t *testin
 		if got := r.Header.Get("User-Agent"); got != "TuberSwitch/"+currentAppVersion {
 			t.Fatalf("user agent = %q", got)
 		}
-		_, _ = w.Write([]byte(`{"tag_name":"v1.0.1","html_url":"https://example.com/bad"}`))
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"tag_name":"v%s","html_url":"https://example.com/bad"}`, nextVersion)))
 	}))
 	defer server.Close()
 
@@ -480,7 +485,7 @@ func TestCheckForUpdatesReportsAvailableVersionAndUsesFixedReleasePage(t *testin
 	if !info.UpdateAvailable {
 		t.Fatalf("expected update available: %#v", info)
 	}
-	if info.LatestVersion != "1.0.1" {
+	if info.LatestVersion != nextVersion {
 		t.Fatalf("latest version = %q", info.LatestVersion)
 	}
 	if info.ReleaseURL != githubReleasesPage {

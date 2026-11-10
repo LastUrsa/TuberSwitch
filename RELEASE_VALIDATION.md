@@ -1,4 +1,18 @@
-# TuberSwitch 1.0.0 Release Validation
+# TuberSwitch 1.0.1 Release Validation
+
+Candidate validation: 2026-11-09 (America/New_York).
+
+- All 43 frontend tests passed with coverage (85.62% statements, 81.07% branches, 88.43% lines); TypeScript/Vite production build passed using lockfile dependencies.
+- Full Go race/coverage tests and `go vet ./...` passed. The process-awareness decision and executable-name matching functions have 100% statement coverage.
+- Native Windows test binaries passed. Linux and Windows `govulncheck` found no known vulnerabilities; `npm audit --audit-level=moderate` found zero vulnerabilities.
+- Regressions cover no retries while OBS is closed, detecting startup/shutdown, clearing retry schedules, remote hosts, process-detection failures, manual connection attempts, executable names, and SIP status.
+- Wails product metadata, runtime/SIP version, UI fallback, and current API examples are aligned to 1.0.1. The internal frontend package retains its existing independent 0.0.0 package version. SIP protocol remains version 1.
+
+Before tagging v1.0.1, the manual Release workflow must pass on this revision with publishing disabled. It builds Windows packages and runs isolated SIP smoke. The tag workflow repeats packaging and smoke before publishing installer, portable ZIP, executable, and checksums. GitHub Actions records provide the evidence for the exact revision.
+
+No live OBS/Twitch session or production install/upgrade acceptance is claimed. Historical validation boundaries below still apply.
+
+## Historical: TuberSwitch 1.0.0 Release Validation
 
 Candidate validation date: 2026-11-07 (America/New_York). This records automated evidence, not a claim that every hardware/account/OS combination has been manually tested.
 

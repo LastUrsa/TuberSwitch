@@ -2,6 +2,22 @@
 
 Release notes are part of the TuberSwitch release process. Before pushing a release tag, add a matching `## vX.Y.Z` section here. The release workflow publishes that section as the GitHub Release body and fails if it is missing or empty.
 
+## v1.0.1
+
+### OBS connection awareness
+
+- Pauses WebSocket connection attempts while local OBS is closed on Windows, checking executable names every three seconds and resuming automatically when OBS starts.
+- Reports `obsConnectionState: not_running` and `OBS not running` through SIP without a scheduled connection-retry timestamp while waiting for the process.
+- Keeps bounded-backoff retries when OBS is running but unavailable, for remote hosts, on unsupported platforms, or when process detection fails.
+- Applies the same process awareness to manual connection attempts. Process checks inspect executable names only.
+- Update LivePanel to v1.0.1 to show the explicit offline state. SIP stays at protocol version 1 and existing profiles/settings remain supported.
+
+### Validation
+
+- Go race/coverage tests, Go vet, and native Windows test binaries passed. New process-awareness decision and executable-name matching functions have 100% statement coverage.
+- All 43 frontend tests and the production build passed; frontend audits and Linux/Windows Go vulnerability scans found no known vulnerabilities.
+- Release packaging and isolated SIP smoke run before publication. See `RELEASE_VALIDATION.md` for validation boundaries.
+
 ## v1.0.0
 
 First stable release for Windows. Existing profile/configuration data remains supported; update in place using the installer or portable app. App version 1.0 does not change SIP protocol version 1.
