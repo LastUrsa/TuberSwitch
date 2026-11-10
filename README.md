@@ -89,7 +89,7 @@ SIP v1 is exposed on localhost only across ports `47040-47049`:
 
 Profiles and existing redeem state are the SIP control surface. Status includes compact OBS, redeem, and app detection summaries for local dashboards, but SIP does not expose configuration APIs for OBS scenes, reward definitions, app detection rules, or profile CRUD.
 
-When OBS is configured but unavailable, TuberSwitch reconnects automatically with bounded backoff. SIP status continues to expose `obsConnected` and also reports a non-sensitive `obsConnectionState` (`not_configured`, `disconnected`, `reconnecting`, or `connected`).
+For local OBS on Windows, TuberSwitch checks executable names every three seconds while OBS is closed and pauses WebSocket connection attempts until OBS starts. It reports `not_running` / `OBS not running` during this wait. When OBS is running but unavailable, TuberSwitch reconnects automatically with bounded backoff. Remote OBS hosts, unsupported platforms, and process-detection errors retain bounded-backoff retries. SIP status continues to expose `obsConnected` and also reports a non-sensitive `obsConnectionState` (`not_configured`, `not_running`, `disconnected`, `reconnecting`, or `connected`).
 
 Profile activation reconciles both the outgoing and incoming profiles. OBS sources used only by the outgoing profile are hidden, incoming VTuber/PNGTuber visibility is applied, and every affected manageable Twitch reward is enabled or disabled according to the incoming profile. Unmanageable rewards are left unchanged. Activation errors identify failed OBS sources or Twitch rewards so callers can surface partial reconciliation failures.
 

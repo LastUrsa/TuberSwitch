@@ -493,6 +493,15 @@ func TestSIPStatusReflectsOBSReconnectStateWithoutCredentials(t *testing.T) {
 		t.Fatalf("reconnecting details = %+v", details)
 	}
 
+	app.obsReconnect.setState(obsStateNotRunning)
+	details, err = app.SIPStatusDetails(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if details.OBSConnected || details.OBSConnectionState != obsStateNotRunning || details.OBSSummary != "OBS not running" || details.OBSNextReconnectAt != "" {
+		t.Fatalf("not running details = %+v", details)
+	}
+
 	fakeOBS.connected = true
 	app.obsReconnect.setState(obsStateConnected)
 	details, err = app.SIPStatusDetails(context.Background())
